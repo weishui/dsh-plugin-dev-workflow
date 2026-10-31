@@ -1,7 +1,7 @@
 # DSH Dev Workflow
 
 <p align="center">
-  <img src="assets/workflow-hero.svg" width="900" alt="DSH Dev Workflow evidence loop">
+  <img src="assets/workflow-hero-generated.png" width="900" alt="DSH Dev Workflow explainer illustration">
 </p>
 
 <p align="center">
