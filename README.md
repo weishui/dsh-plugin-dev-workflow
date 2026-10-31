@@ -1,10 +1,8 @@
 # DSH Dev Workflow
 
 <p align="center">
-  <img src="assets/icon.svg" width="96" height="96" alt="DSH Dev Workflow icon">
+  <img src="assets/workflow-hero.svg" width="900" alt="DSH Dev Workflow evidence loop">
 </p>
-
-<h1 align="center">DSH Dev Workflow</h1>
 
 <p align="center">
   <strong>把研发对话变成可验证、可交接、可复盘的闭环。</strong><br>
@@ -21,17 +19,64 @@
 
 ## 为什么用它？
 
-AI coding 很快，交付却常常缺少上下文：需求散落在聊天里、反馈没有原话、任务没有验收、测试结果无法追溯。
+AI coding 的瓶颈往往不是“不会写”，而是**上下文断裂、决策丢失、验证不可追溯**。
 
-DSH Dev Workflow 提供一条明确的证据链：
+DSH Dev Workflow 把交付过程变成一条可读的证据链：
 
-| 阶段 | 记录什么 | 结果 |
+```text
+用户原话 → 可执行任务 → 真实验证 → 带证据的交付总结
+     ↘ 反馈与决策 ↗        ↘ 可复盘知识 ↗
+```
+
+它不是一个替你执行一切的“自动驾驶按钮”，而是一个让 AI **更像靠谱队友**的工作协议：知道什么时候应该问、什么时候应该等确认、什么时候必须拿证据。
+
+## Preset 的性格
+
+> **冷静、克制、可追责。**
+
+- 不把普通聊天自动变成长久记忆；
+- 不把“我应该通过了”当成测试证据；
+- 不把反馈悄悄升级为团队规范；
+- 不跨项目读取，不自动安装依赖，不自动提交；
+- 破坏性动作先停下来，把风险和选择交给人。
+
+它的核心优先级是：**安全边界 > 仓库规范 > 项目目标 > 用户偏好 > 当前请求**。
+
+## 真实环境里为什么有用？
+
+| 真实问题 | 没有闭环时 | 有了 Dev Workflow |
 | --- | --- | --- |
-| **Request** | 用户原话、范围、验收标准 | 不再“凭感觉开工” |
-| **Feedback** | 原始反馈、决策、影响 | 变化可追踪 |
-| **Task** | 最小任务、依赖、风险 | 工作可交接 |
-| **Verify** | 实际命令、退出码、结果 | 不用“应该通过”冒充证据 |
-| **Completion** | 变更、验证、风险、下一步 | 收口可审计 |
+| 需求在聊天里变化 | AI 只记住最后一句 | 原话、范围、验收条件可回看 |
+| 多轮反馈互相矛盾 | 只能靠上下文猜 | 每条反馈有决策与影响 |
+| “已经测过了” | 没有退出码和命令 | 验证记录绑定任务和结果 |
+| 换人或隔天继续 | 重新解释项目 | `dev_context_get` 给出有界摘要 |
+| 长期知识污染 | 一次偏好变成永久规则 | 只有明确确认才 promote |
+
+## 记录到底长什么样？
+
+插件使用本地 append-only JSONL。下面是**脱敏后的示例**，不是预置数据：
+
+```json
+{"schemaVersion":1,"requestId":"req_7f21","rawQuote":"把登录页的错误提示改得更清楚","acceptance":["空密码显示字段级提示","错误提示不泄露账号是否存在"],"status":"captured"}
+{"schemaVersion":1,"feedbackId":"fb_12ac","requestId":"req_7f21","rawQuote":"文案要短一些，但保留可操作建议","decision":"accept","category":"quality","status":"recorded"}
+{"schemaVersion":1,"taskId":"task_91de","title":"更新登录错误提示","acceptance":["单元测试覆盖两种错误分支"],"status":"queued"}
+{"schemaVersion":1,"verificationId":"verify_44aa","taskId":"task_91de","command":"npm test -- login","exitCode":0,"status":"passed"}
+{"schemaVersion":1,"completionId":"completion_08c1","taskId":"task_91de","status":"succeeded","verificationRefs":["verify_44aa"]}
+```
+
+每个项目默认写入：
+
+```text
+<your-project>/.dsh-dev/
+├── requests.jsonl
+├── feedback.jsonl
+├── tasks.jsonl
+├── verifications.jsonl
+├── completions.jsonl
+└── knowledge.jsonl
+```
+
+这些记录只保存在本地；请勿写入密钥、客户资料或其他敏感信息，并确保 `.dsh-dev/` 不提交到 Git。
 
 ## 安装
 
@@ -72,19 +117,6 @@ plugin_manager install_bundle target=<本目录绝对路径>
 - DSH：`>=0.2.1-rc.2 <0.3.0`
 - Node.js：`>=22.19.0`
 - 当前版本：`0.1.0`
-
-## 数据与隐私边界
-
-默认在当前项目写入 `.dsh-dev/`，使用 append-only JSONL 保存：
-
-```text
-requests.jsonl       feedback.jsonl       tasks.jsonl
-verifications.jsonl  completions.jsonl    knowledge.jsonl
-```
-
-这些记录可能包含用户原话、任务描述、命令、文件名和项目上下文。它们只保存在本地，本插件不会上传数据；请勿写入密钥、客户资料或其他敏感信息，并确保 `.dsh-dev/` 不提交到 Git。
-
-本 MVP 不提供任意 shell、自动提交、依赖安装或任意跨项目读取。验证工具只记录调用方传入的退出码；没有通过验证的总结不会标记为 `succeeded`。
 
 ## 开发
 
