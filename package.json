@@ -16,5 +16,5 @@
   "scripts": { "prepublishOnly": "node verify/smoke.mjs" },
   "exports": { ".": "./index.js", "./package.json": "./package.json" },
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
-  "files": ["index.js", "cordis.patch.yml", "README.md", "LICENSE", "assets/icon.svg", "assets/workflow-hero.svg", "assets/workflow-hero-generated.png", "assets/workflow-infographic-base.png"]
+  "files": ["index.js", "cordis.patch.yml", "README.md", "LICENSE", "assets/icon.svg", "assets/workflow-infographic.svg"]
 }
