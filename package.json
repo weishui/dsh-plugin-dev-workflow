@@ -1,0 +1,20 @@
+{
+  "name": "dsh-plugin-dev-workflow",
+  "version": "0.1.0",
+  "private": false,
+  "description": "DSH development assistant for request, feedback, task, verification, and completion workflows",
+  "license": "MIT",
+  "keywords": ["dsh", "dsh-plugin", "deepseek-harness", "development", "workflow", "feedback", "task-management"],
+  "engines": { "node": ">=22.19.0", "dsh": ">=0.2.1-rc.2 <0.3.0" },
+  "peerDependencies": { "@deepseek-ai/dsh": ">=0.2.1-rc.2 <0.3.0" },
+  "type": "module",
+  "main": "./index.js",
+  "homepage": "https://github.com/yuna78/dsh-plugin-dev-workflow#readme",
+  "repository": { "type": "git", "url": "git+https://github.com/yuna78/dsh-plugin-dev-workflow.git" },
+  "bugs": { "url": "https://github.com/yuna78/dsh-plugin-dev-workflow/issues" },
+  "icon": "assets/icon.svg",
+  "scripts": { "prepublishOnly": "node verify/smoke.mjs" },
+  "exports": { ".": "./index.js", "./package.json": "./package.json" },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "files": ["index.js", "cordis.patch.yml", "README.md", "LICENSE", "assets/icon.svg"]
+}

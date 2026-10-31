@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="DSH Dev Workflow">
+  <rect width="48" height="48" rx="12" fill="#1f2937"/>
+  <path d="M12 14h24v5H17v4h15v5H17v4h19v5H12V14Z" fill="#67e8f9"/>
+  <circle cx="36" cy="14" r="4" fill="#fbbf24"/>
+</svg>
