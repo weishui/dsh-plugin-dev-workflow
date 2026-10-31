@@ -136,6 +136,7 @@ npm pack --dry-run
 ## 项目链接
 
 - Repository: https://github.com/yuna78/dsh-plugin-dev-workflow
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Issues: https://github.com/yuna78/dsh-plugin-dev-workflow/issues
 - npm: https://www.npmjs.com/package/dsh-plugin-dev-workflow
 

@@ -7,7 +7,7 @@ import { defineDevTools } from '../index.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
-const required = ['index.js', 'cordis.patch.yml', 'README.md', 'LICENSE', 'assets/icon.svg'];
+const required = ['index.js', 'cordis.patch.yml', 'README.md', 'CHANGELOG.md', 'LICENSE', 'assets/icon.svg'];
 for (const file of required) {
   if (!existsSync(join(root, file))) throw new Error(`missing required file: ${file}`);
 }
@@ -15,6 +15,12 @@ if (pkg.name !== 'dsh-plugin-dev-workflow') throw new Error(`unexpected package 
 if (pkg.dsh?.bundle?.patch !== './cordis.patch.yml') throw new Error('invalid dsh.bundle.patch');
 if (pkg.icon !== 'assets/icon.svg') throw new Error('icon must be declared');
 if (!pkg.files?.includes('assets/icon.svg')) throw new Error('icon must be included in files');
+if (!pkg.files?.includes('CHANGELOG.md')) throw new Error('CHANGELOG.md must ship in the package');
+// Release notes and docs must name the published version, or consumers retag wrongly.
+const readme = readFileSync(join(root, 'README.md'), 'utf8');
+const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
+if (!readme.includes(pkg.version)) throw new Error(`README.md does not mention version ${pkg.version}`);
+if (!changelog.includes(`## [${pkg.version}]`)) throw new Error(`CHANGELOG.md has no section for ${pkg.version}`);
 const check = spawnSync(process.execPath, ['--check', join(root, 'index.js')], { stdio: 'inherit' });
 if (check.status !== 0) process.exit(check.status ?? 1);
 
