@@ -1,7 +1,7 @@
 # DSH Dev Workflow
 
 <p align="center">
-  <img src="assets/workflow-hero-generated.png" width="900" alt="DSH Dev Workflow explainer illustration">
+  <img src="assets/workflow-infographic-base.png" width="900" alt="DSH Dev Workflow detailed educational infographic">
 </p>
 
 <p align="center">
