@@ -22,8 +22,13 @@ function append(dir, file, record) {
   return record;
 }
 function safeRoot(ctx, config, exec) {
-  const session = exec?.agent?.id;
-  const cwd = config.projectRoot || ctx.workingDirectory?.get?.(session) || process.cwd();
+  // workingDirectory.get() takes a live Session object (it reads session
+  // projections by identity), not a session id string: passing exec.agent.id
+  // throws `session.snapshotEvents is not a function` inside the projection
+  // cache and fails every dev_* tool.
+  const session = exec?.agent?.session;
+  const live = session === undefined ? undefined : ctx.workingDirectory?.get?.(session);
+  const cwd = config.projectRoot || live || session?.header?.cwd || process.cwd();
   return resolve(cwd);
 }
 function storeFor(ctx, config, exec) {

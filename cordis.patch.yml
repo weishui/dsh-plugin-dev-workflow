@@ -11,6 +11,23 @@
             name: 'dsh-plugin-dev-workflow'
             config:
               tools: true
+          # The web shell disables the host-plane tool-bash/tool-pwsh/tool-jobs
+          # rows: a preset owns them. Without these the agent cannot run the
+          # real commands dev_verify is supposed to record.
+          - id: tool-bash
+            name: '@deepseek-ai/dsh-tool-bash'
+            disabled: !!js process.platform === 'win32'
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+            disabled: !!js process.platform !== 'win32'
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+          # Repository rules (AGENTS.md / CLAUDE.md) are part of the declared
+          # context priority, so the preset must load them itself.
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 65536
           - id: tool-fs
             name: '@deepseek-ai/dsh-tool-fs'
           - id: tool-fs-search
