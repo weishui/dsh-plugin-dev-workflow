@@ -2,6 +2,16 @@
 
 本项目的所有重要变更都记录在这里。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.2.6] · 2026-11-01
+
+### 新增
+
+- **需求终态：`dev_request_close`**——需求此前永远停在「已登记」，交付完的、作废的
+  全部挤在需求列。新工具给需求 `delivered`（已交付）/ `invalid`（已作废）/
+  `superseded`（已被取代）三种终态，append-only 追加状态行（reader 按 requestId 取
+  latest，不改历史），看板需求列只陈列未终结需求，计数拆出 `openRequests` /
+  `closedRequests`；运行期提醒的需求计数改为按 requestId 去重（关闭行不再让计数膨胀）。
+
 ## [0.2.5] · 2026-11-01
 
 ### 修复
