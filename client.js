@@ -73,7 +73,19 @@ window.__ModuleLoader__.load({
      * Pure on purpose: the preview harness and the smoke test render the exact
      * same view model the browser does.
      */
-    function collect(board, filter) {
+    const DEFAULT_OPEN_CAPS = { queued: 20, waiting: 20 };
+
+    /**
+     * Turn one host payload into column arrays plus counts for the active filter.
+     * Pure on purpose: the preview harness and the smoke test render the exact
+     * same view model the browser does.
+     *
+     * Windowing has two layers, because the two growth axes are different:
+     * 已完成/需求 grow with history, so the HOST truncates them and the button
+     * refetches with a bigger limit; 待办/待确认 are already in the payload, so
+     * they are capped locally and the button just raises the cap — no round trip.
+     */
+    function collect(board, filter, caps = DEFAULT_OPEN_CAPS) {
       const requests = Array.isArray(board?.requests) ? board.requests : [];
       const tasks = Array.isArray(board?.tasks) ? board.tasks : [];
       const columns = {
@@ -83,6 +95,7 @@ window.__ModuleLoader__.load({
           title: shorten(request.rawQuote, 110),
           meta: `${(request.acceptance ?? []).length} 条验收 · ${REQUEST_LABEL[request.status] ?? request.status ?? '已登记'}`,
           note: request.scope ? `范围 · ${shorten(request.scope, 64)}` : '',
+          feedback: request.latestFeedback ? shorten(request.latestFeedback.rawQuote, 90) : '',
           time: shortTime(request.createdAt),
         })),
         queued: [],
@@ -98,17 +111,34 @@ window.__ModuleLoader__.load({
           // record, so the label follows the column, not the stored status.
           meta: `${(task.acceptance ?? []).length} 条验收 · ${task.closed ? '已完成' : (STATUS_LABEL[task.status] ?? task.status ?? '待办')}`,
           note: task.risk ? `风险 · ${shorten(task.risk, 64)}` : '',
+          feedback: task.latestFeedback ? shorten(task.latestFeedback.rawQuote, 90) : '',
           time: shortTime(task.createdAt),
         });
       }
+
+      const window = board?.window ?? {};
+      const hostWindows = { requests: window.requests, closed: window.closedTasks };
       const visible = (column) => filter === 'all' || column.filter === filter;
-      const visibleColumns = COLUMNS.filter((column) => visible(column))
-        .map((column) => ({ ...column, items: columns[column.id] ?? [] }));
-      const counts = {
-        open: columns.requests.length + columns.queued.length + columns.waiting.length,
-        closed: columns.closed.length,
-        all: columns.requests.length + columns.queued.length + columns.waiting.length + columns.closed.length,
-      };
+      const visibleColumns = COLUMNS.filter((column) => visible(column)).map((column) => {
+        const all = columns[column.id] ?? [];
+        const hostSpan = hostWindows[column.id];
+        if (hostSpan) {
+          const total = hostSpan.total ?? all.length;
+          return { ...column, items: all, more: total > all.length ? { shown: all.length, total, hidden: total - all.length } : null };
+        }
+        const cap = Number.isInteger(caps?.[column.id]) ? caps[column.id] : (DEFAULT_OPEN_CAPS[column.id] ?? all.length);
+        if (all.length <= cap) return { ...column, items: all, more: null };
+        return { ...column, items: all.slice(0, cap), more: { shown: cap, total: all.length, hidden: all.length - cap } };
+      });
+
+      // Chips describe the LOG, not the window: on a 200-request project
+      // "全部 220" would be a lie when 500 records exist. Each column header
+      // shows rendered/total whenever the window truncated it.
+      const totals = board?.counts ?? {};
+      const totalRequests = Number.isInteger(totals.requests) ? totals.requests : columns.requests.length;
+      const totalOpen = Number.isInteger(totals.openTasks) ? totals.openTasks : columns.queued.length + columns.waiting.length;
+      const totalClosed = Number.isInteger(totals.closedTasks) ? totals.closedTasks : columns.closed.length;
+      const counts = { open: totalRequests + totalOpen, closed: totalClosed, all: totalRequests + totalOpen + totalClosed };
       return { columns: visibleColumns, counts };
     }
 
@@ -117,21 +147,26 @@ window.__ModuleLoader__.load({
         h('div', { className: 'dw-card-title' }, item.title || '（无标题）'),
         h('div', { className: 'dw-card-meta' }, item.meta),
         item.note ? h('div', { className: 'dw-card-note' }, item.note) : null,
+        item.feedback ? h('div', { className: 'dw-card-fb' }, h('span', null, '最新反馈'), ' ', item.feedback) : null,
         h('div', { className: 'dw-card-foot' },
           h('code', null, item.id),
           h('span', null, item.time)));
     }
 
-    function columnNode(column) {
+    function columnNode(column, onMore) {
       return h('section', { className: 'dw-col', 'data-col': column.id },
         h('header', { className: 'dw-col-head' },
           h('span', { className: 'dw-col-title' }, column.title),
-          h('span', { className: 'dw-col-count' }, String(column.items.length))),
+          h('span', { className: 'dw-col-count' }, String(column.more ? `${column.items.length}/${column.more.total}` : column.items.length))),
         h('p', { className: 'dw-col-hint' }, column.hint),
         h('div', { className: 'dw-col-body' },
           column.items.length === 0
             ? h('div', { className: 'dw-empty' }, '这一列还没有记录')
-            : column.items.map(cardNode)));
+            : column.items.map(cardNode)),
+        column.more && onMore
+          ? h('button', { type: 'button', className: 'dw-more', onClick: () => onMore(column.id) },
+            `显示更多 · 还有 ${column.more.hidden} 条`)
+          : null);
     }
 
     // Editorial, not dashboard: hairline rules and whitespace carry the
@@ -173,6 +208,10 @@ window.__ModuleLoader__.load({
 .dw-card[data-kind="request"] .dw-card-title{font-weight:600}
 .dw-card-meta{color:var(--dsw-alias-label-secondary,#61666b);font-size:12px;font-variant-numeric:tabular-nums}
 .dw-card-note{color:var(--dsw-alias-label-tertiary,#8b8f96);font-size:11.5px;margin-top:5px;line-height:1.55}
+.dw-card-fb{margin-top:6px;color:var(--dsw-alias-label-secondary,#61666b);font-size:11.5px;line-height:1.55}
+.dw-card-fb span{color:var(--dsw-alias-label-tertiary,#a0a5ab);margin-right:2px}
+.dw-more{align-self:flex-start;margin-top:14px;border:0;background:none;padding:0;color:var(--dsw-alias-label-tertiary,#8b8f96);font:inherit;font-size:12px;cursor:pointer;border-bottom:1px solid var(--dsw-alias-border-l3,#0000001f);padding-bottom:2px}
+.dw-more:hover{color:var(--dsw-alias-label-primary,#17191c);border-bottom-color:var(--dsw-alias-label-primary,#17191c)}
 .dw-card-foot{display:flex;justify-content:space-between;gap:12px;margin-top:9px;color:var(--dsw-alias-label-tertiary,#a8adb3);font-size:10.5px;font-variant-numeric:tabular-nums}
 .dw-card-foot code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
 .dw-empty{color:var(--dsw-alias-label-tertiary,#a8adb3);font-size:12px;padding:20px 0}
@@ -199,6 +238,10 @@ window.__ModuleLoader__.load({
         try { return window.localStorage.getItem(ROOT_KEY) || ''; } catch { return ''; }
       });
       const [board, setBoard] = React.useState(null);
+      // Windows, not a page number: 已完成 grows the closed window, 需求 grows the
+      // request window, and the host keeps the payload bounded either way.
+      const [limits, setLimits] = React.useState({ requestLimit: 40, closedLimit: 30 });
+      const [openCaps, setOpenCaps] = React.useState({ queued: 20, waiting: 20 });
       const [error, setError] = React.useState('');
       const [loading, setLoading] = React.useState(false);
       const [filter, setFilter] = React.useState('open');
@@ -214,7 +257,8 @@ window.__ModuleLoader__.load({
         let cancelled = false;
         setLoading(true);
         setError('');
-        fetch(`${ENDPOINT}?root=${encodeURIComponent(active)}`, { cache: 'no-store' })
+        const query = `root=${encodeURIComponent(active)}&requestLimit=${limits.requestLimit}&closedLimit=${limits.closedLimit}`;
+        fetch(`${ENDPOINT}?${query}`, { cache: 'no-store' })
           .then(async (response) => {
             const body = await response.json().catch(() => null);
             if (!response.ok) throw new Error(body?.error || `HTTP ${response.status}`);
@@ -224,14 +268,24 @@ window.__ModuleLoader__.load({
           .catch((failure) => { if (!cancelled) { setBoard(null); setError(failure?.message || '读取失败'); } })
           .finally(() => { if (!cancelled) setLoading(false); });
         return () => { cancelled = true; };
-      }, [active, tick]);
+      }, [active, tick, limits.requestLimit, limits.closedLimit]);
+
+      const showMore = (columnId) => {
+        if (columnId === 'queued' || columnId === 'waiting') {
+          setOpenCaps((previous) => ({ ...previous, [columnId]: (previous[columnId] ?? 20) + 30 }));
+          return;
+        }
+        setLimits((previous) => (columnId === 'closed'
+          ? { ...previous, closedLimit: previous.closedLimit + 50 }
+          : { ...previous, requestLimit: previous.requestLimit + 50 }));
+      };
 
       const choose = (next) => {
         setRoot(next);
         try { window.localStorage.setItem(ROOT_KEY, next); } catch { /* storage may be blocked */ }
       };
 
-      const view = React.useMemo(() => collect(board, filter), [board, filter]);
+      const view = React.useMemo(() => collect(board, filter, openCaps), [board, filter, openCaps]);
 
       if (!workspaces.length) {
         return h('div', { className: 'dw-board' }, h('style', { dangerouslySetInnerHTML: { __html: CSS } }),
@@ -269,7 +323,7 @@ window.__ModuleLoader__.load({
             : view.counts.all === 0
               ? h('div', { className: 'dw-state' }, h('b', null, '这个工作区还没有记录。'),
                 h('div', null, '在选了「研发助手 · Dev Assistant」的会话里提一条需求，看板就会出现第一张卡片。'))
-              : h('div', { className: 'dw-cols' }, view.columns.map(columnNode)));
+              : h('div', { className: 'dw-cols' }, view.columns.map((column) => columnNode(column, showMore))));
     }
 
     function PanelIcon(props) {

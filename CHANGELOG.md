@@ -17,6 +17,11 @@
 - **视觉**：编辑式排版——发丝分隔线、无卡片边框与阴影、无彩色强调条；配色改用 shell 的
   ui-theme 设计变量（浅色回退），跟随应用浅/深主题。卡片上的范围/风险字段加了标签前缀，
   标题栏只显示项目 id 与工作区目录名（完整路径进 tooltip）。
+- **大数据量**：已完成窗口（默认 30）+ 需求窗口（默认 40）由 host 截断并带 `window`
+  `{shown,total,limit}`，客户端「显示更多」按 +50/+40 重新取；待办/待确认每列默认 20，
+  本地展开。顶部计数始终描述全量。合成 200 需求 / 300 任务下默认响应 70 KB、readBoard 10 ms。
+- **只保留最新反馈**：每个需求/任务只携带 `createdAt` 最新的一条反馈，卡片一行展示；
+  反馈历史仍完整留在 `feedback.jsonl`。
 - **离线预览 harness**：`npm run preview` 用 `readBoard()` 的真实数据 + client 的同一套
   `collect()` / `columnNode()` / CSS 渲染，再用本机 Chrome 截图到 `docs/preview-board.png`。
 

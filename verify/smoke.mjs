@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -210,6 +210,79 @@ try {
   if (cards[0]?.type !== 'article' || cards[0].props?.className !== 'dw-card') throw new Error('column must render its cards');
   if (view.columnNode({ id: 'queued', title: '待办', hint: 'h', items: [] }).props.children[2].props.children.flat().length === 0) {
     throw new Error('empty column must still render its placeholder');
+  }
+
+  // --- scale: a 200-request project must not ship megabytes or a wall of cards
+  const bigRoot = mkdtempSync(join(tmpdir(), 'dsh-dev-scale-'));
+  try {
+    const bigDir = join(bigRoot, '.dsh-dev');
+    mkdirSync(bigDir, { recursive: true });
+    const stamp = (index) => new Date(Date.UTC(2026, 9, 1, 0, 0, index)).toISOString();
+    const buckets = new Map();
+    const push = (file, row) => buckets.set(file, [...(buckets.get(file) ?? []), JSON.stringify(row)]);
+    for (let index = 0; index < 200; index += 1) {
+      push('requests.jsonl', { schemaVersion: 1, requestId: `req_big_${index}`, rawQuote: `需求 ${index}：把第 ${index} 个页面的空状态补齐`, acceptance: ['空态可读', '不误导'], status: 'captured', createdAt: stamp(index) });
+    }
+    for (let index = 0; index < 300; index += 1) {
+      push('tasks.jsonl', { schemaVersion: 1, taskId: `task_big_${index}`, requestId: `req_big_${index % 200}`, title: `任务 ${index}`, acceptance: ['可验证'], status: 'queued', createdAt: stamp(index) });
+    }
+    for (let index = 0; index < 150; index += 1) {
+      push('completions.jsonl', { schemaVersion: 1, completionId: `completion_big_${index}`, taskId: `task_big_${index}`, status: 'succeeded', createdAt: stamp(index) });
+    }
+    for (let index = 0; index < 3; index += 1) {
+      push('feedback.jsonl', { schemaVersion: 1, feedbackId: `fb_big_${index}`, taskId: 'task_big_250', rawQuote: `第 ${index} 版反馈`, createdAt: stamp(index) });
+    }
+    for (const [file, rows] of buckets) writeFileSync(join(bigDir, file), `${rows.join('\n')}\n`);
+
+    const started = Date.now();
+    const big = readBoard(bigRoot);
+    const elapsed = Date.now() - started;
+    if (big.counts.requests !== 200) throw new Error(`scale requests = ${big.counts.requests}`);
+    if (big.counts.tasks !== 300) throw new Error(`scale tasks = ${big.counts.tasks}`);
+    if (big.counts.closedTasks !== 150 || big.counts.openTasks !== 150) throw new Error(`scale split wrong: ${JSON.stringify(big.counts)}`);
+    if (big.window.requests.shown !== 40 || big.window.requests.total !== 200) throw new Error(`request window wrong: ${JSON.stringify(big.window.requests)}`);
+    if (big.window.closedTasks.shown !== 30 || big.window.closedTasks.total !== 150) throw new Error(`closed window wrong: ${JSON.stringify(big.window.closedTasks)}`);
+    if (big.requests.length !== 40) throw new Error(`default board must ship 40 requests, got ${big.requests.length}`);
+    if (big.tasks.filter((task) => task.closed).length !== 30) throw new Error('default board must ship 30 closed tasks');
+    if (big.tasks.filter((task) => !task.closed).length !== 150) throw new Error('open tasks must all ship');
+    const newestRequest = big.requests[0];
+    if (newestRequest.id !== 'req_big_199') throw new Error(`requests must be newest-first, got ${newestRequest.id}`);
+    const bytes = Buffer.byteLength(JSON.stringify(big));
+    if (bytes > 260 * 1024) throw new Error(`default window payload is ${Math.round(bytes / 1024)} kB, expected a bounded response`);
+    if (elapsed > 2000) throw new Error(`readBoard took ${elapsed}ms on 500 records`);
+
+    const history = big.tasks.find((task) => task.id === 'task_big_250');
+    if (history?.latestFeedback?.rawQuote !== '第 2 版反馈') throw new Error('board must carry only the newest feedback per task');
+
+    const wide = readBoard(bigRoot, { requestLimit: 500, closedLimit: 500 });
+    if (wide.requests.length !== 200) throw new Error('raising requestLimit must return every request');
+    if (wide.tasks.filter((task) => task.closed).length !== 150) throw new Error('raising closedLimit must return every closed task');
+
+    // the client must both offer the window and count it honestly
+    const bigView = view.collect(big, 'all');
+    const closedColumn = bigView.columns.find((column) => column.id === 'closed');
+    const requestColumn = bigView.columns.find((column) => column.id === 'requests');
+    if (closedColumn.more?.hidden !== 120) throw new Error(`closed footer must say 120 hidden, got ${closedColumn.more?.hidden}`);
+    if (requestColumn.more?.hidden !== 160) throw new Error(`request footer must say 160 hidden, got ${requestColumn.more?.hidden}`);
+    const queuedColumn = bigView.columns.find((column) => column.id === 'queued');
+    if (queuedColumn.items.length !== 20) throw new Error(`待办 column must cap at 20 cards, got ${queuedColumn.items.length}`);
+    if (queuedColumn.more?.hidden !== 130) throw new Error(`待办 footer must say 130 hidden, got ${queuedColumn.more?.hidden}`);
+    if (bigView.columns.find((column) => column.id === 'queued').more && view.collect(big, 'all', { queued: 40, waiting: 20 }).columns.find((column) => column.id === 'queued').items.length !== 40) {
+      throw new Error('raising the local cap must reveal more cards without a refetch');
+    }
+    if (bigView.counts.closed !== 150) throw new Error(`closed chip must describe the log: ${bigView.counts.closed}`);
+    if (bigView.counts.open !== 350) throw new Error(`open chip must describe the log: ${bigView.counts.open}`);
+    if (bigView.counts.all !== 500) throw new Error(`all chip must describe the log: ${bigView.counts.all}`);
+    if (closedColumn.items.length !== 30) throw new Error('closed column must render only the window');
+    const footer = view.columnNode(closedColumn, () => {}).props.children;
+    const moreButton = footer.find?.((child) => child?.props?.className === 'dw-more');
+    if (!moreButton) throw new Error('truncated column must render a 显示更多 button');
+    if (!String(moreButton.props.children).includes('120')) throw new Error('显示更多 must state how many are hidden');
+    if (view.columnNode(closedColumn).props.children.some?.((child) => child?.props?.className === 'dw-more')) {
+      throw new Error('without a handler the column must not render a dead button');
+    }
+  } finally {
+    rmSync(bigRoot, { recursive: true, force: true });
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });

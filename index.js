@@ -16,6 +16,7 @@ function lines(file) {
     try { return [JSON.parse(line)]; } catch { return []; }
   });
 }
+const allLines = lines;
 function append(dir, file, record) {
   mkdirSync(dir, { recursive: true });
   appendFileSync(join(dir, file), `${JSON.stringify(record)}\n`, { mode: 0o600 });
@@ -128,17 +129,43 @@ export function readBoard(root, config = {}) {
   for (const completion of completions) {
     if (typeof completion?.taskId === 'string') completionByTask.set(completion.taskId, completion);
   }
-  const requests = latest(lines(join(dir, 'requests.jsonl')), 'requestId').map((record) => ({
-    id: record.requestId,
-    rawQuote: record.rawQuote ?? '',
-    normalized: record.normalized ?? '',
-    acceptance: record.acceptance ?? [],
-    scope: record.scope ?? '',
-    priority: record.priority ?? 'normal',
-    status: record.status ?? 'captured',
-    createdAt: record.createdAt ?? null,
-  }));
-  const tasks = latest(lines(join(dir, 'tasks.jsonl')), 'taskId').map((record) => {
+
+  // One board for a 2-task project and one for a 200-request project cannot both
+  // be "return every record": the second would ship megabytes to the browser and
+  // render a wall of cards nobody scrolls. Closed work is windowed (newest first,
+  // `closedLimit` per response) and the counts always describe the whole log, so
+  // "7 of 212" stays honest while the payload stays small.
+  const closedLimit = clampLimit(config.closedLimit, DEFAULT_CLOSED_LIMIT);
+  const requestLimit = clampLimit(config.requestLimit, DEFAULT_REQUEST_LIMIT);
+
+  // Only the newest feedback per target is carried, matching how deck-line kept
+  // its task list readable: a task's history is the log's job, not the card's.
+  const latestFeedback = new Map();
+  for (const record of allLines(join(dir, 'feedback.jsonl'))) {
+    const target = record?.taskId ? `task:${record.taskId}` : record?.requestId ? `request:${record.requestId}` : '';
+    if (!target) continue;
+    const previous = latestFeedback.get(target);
+    if (previous === undefined || String(record.createdAt ?? '') >= String(previous.createdAt ?? '')) latestFeedback.set(target, record);
+  }
+  const feedbackFor = (target) => {
+    const record = latestFeedback.get(target);
+    return record === undefined ? null : { rawQuote: record.rawQuote ?? '', decision: record.decision ?? null, category: record.category ?? null, createdAt: record.createdAt ?? null };
+  };
+
+  const allRequests = latest(allLines(join(dir, 'requests.jsonl')), 'requestId')
+    .map((record) => ({
+      id: record.requestId,
+      rawQuote: record.rawQuote ?? '',
+      normalized: record.normalized ?? '',
+      acceptance: record.acceptance ?? [],
+      scope: record.scope ?? '',
+      priority: record.priority ?? 'normal',
+      status: record.status ?? 'captured',
+      createdAt: record.createdAt ?? null,
+      latestFeedback: feedbackFor(`request:${record.requestId}`),
+    }))
+    .sort(newestFirst);
+  const allTasks = latest(allLines(join(dir, 'tasks.jsonl')), 'taskId').map((record) => {
     const completion = completionByTask.get(record.taskId);
     const status = record.status ?? 'queued';
     return {
@@ -154,25 +181,52 @@ export function readBoard(root, config = {}) {
       closed: status === 'succeeded' || status === 'cancelled' || completion !== undefined,
       completionStatus: completion?.status ?? null,
       createdAt: record.createdAt ?? null,
+      latestFeedback: feedbackFor(`task:${record.taskId}`),
     };
-  });
+  }).sort(newestFirst);
+
+  const openTasks = allTasks.filter((task) => !task.closed);
+  const closedTasks = allTasks.filter((task) => task.closed);
+  const requests = allRequests.slice(0, requestLimit);
+  const tasks = [...openTasks, ...closedTasks.slice(0, closedLimit)];
+
   return {
     schemaVersion: 1,
     projectId: `project_${createHash('sha256').update(absolute).digest('hex').slice(0, 10)}`,
     root: absolute,
     counts: {
-      requests: requests.length,
-      tasks: tasks.length,
-      feedback: lines(join(dir, 'feedback.jsonl')).length,
-      verifications: lines(join(dir, 'verifications.jsonl')).length,
+      requests: allRequests.length,
+      tasks: allTasks.length,
+      feedback: allLines(join(dir, 'feedback.jsonl')).length,
+      verifications: allLines(join(dir, 'verifications.jsonl')).length,
       completions: completions.length,
-      openTasks: tasks.filter((task) => !task.closed).length,
-      closedTasks: tasks.filter((task) => task.closed).length,
+      openTasks: openTasks.length,
+      closedTasks: closedTasks.length,
+    },
+    // What was cut, so the board can offer "显示更多" without guessing.
+    window: {
+      requests: { shown: requests.length, total: allRequests.length, limit: requestLimit },
+      closedTasks: { shown: Math.min(closedTasks.length, closedLimit), total: closedTasks.length, limit: closedLimit },
     },
     requests,
     tasks,
     generatedAt: now(),
   };
+}
+
+const DEFAULT_CLOSED_LIMIT = 30;
+const DEFAULT_REQUEST_LIMIT = 40;
+const MAX_LIMIT = 500;
+
+function clampLimit(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, MAX_LIMIT);
+}
+
+/** Newest first; equal or missing timestamps keep their recorded order stable. */
+function newestFirst(left, right) {
+  return String(right.createdAt ?? '').localeCompare(String(left.createdAt ?? ''));
 }
 
 export const BOARD_ROUTE = '/api/dsh-dev-assistant.board';
@@ -197,14 +251,21 @@ export function registerBoardRoute(ctx, config = {}) {
       requestBody: 'buffered',
       fetch: async (request) => {
         let root = '';
-        try { root = new URL(request.url).searchParams.get('root') || ''; } catch { root = ''; }
+        let closedLimit;
+        let requestLimit;
+        try {
+          const url = new URL(request.url);
+          root = url.searchParams.get('root') || '';
+          closedLimit = url.searchParams.get('closedLimit') ?? undefined;
+          requestLimit = url.searchParams.get('requestLimit') ?? undefined;
+        } catch { root = ''; }
         if (!root) root = config.projectRoot || process.cwd();
         if (!isAbsolute(root)) return boardResponse({ error: 'root must be an absolute path' }, 400);
         let stat;
         try { stat = statSync(root); } catch { return boardResponse({ error: `root not found: ${root}` }, 400); }
         if (!stat.isDirectory()) return boardResponse({ error: `root is not a directory: ${root}` }, 400);
         try {
-          return boardResponse(readBoard(root, config), 200);
+          return boardResponse(readBoard(root, { ...config, closedLimit, requestLimit }), 200);
         } catch (error) {
           return boardResponse({ error: `board read failed: ${error?.message ?? 'unknown'}` }, 500);
         }
