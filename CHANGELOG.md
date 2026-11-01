@@ -2,6 +2,18 @@
 
 本项目的所有重要变更都记录在这里。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.2.3] · 2026-11-01
+
+### 修复
+
+- **看板入口从未出现在侧边栏（且无任何报错）**：插件的浏览器 UI 依赖宿主把本包组合进
+  页面模块图，而组合扫描只认宿主树里「包名 + 活 fiber」的 loader 条目。此前本包只在
+  preset 内嵌挂载（随会话才挂载），宿主层没有本包的 fiber，看板 client 被静默跳过 ——
+  不报错、不出现在插件列表、开关与重启都不影响。现在 `cordis.patch.yml` 顶层 `insert`
+  挂载本包本体（`tools: false`、`reminder: false`，仅注册只读看板路由），`dev_*` 工具
+  与运行期提醒仍由会话内 preset 的 `dev-assistant-tools` 负责。已在真实宿主实例验证：
+  页面模块图出现本插件行、client bundle 与 `/api/dsh-dev-assistant.board` 均返回 200。
+
 ## [0.2.2] · 2026-11-01
 
 ### 修复
