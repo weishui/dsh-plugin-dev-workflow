@@ -2,6 +2,16 @@
 
 本项目的所有重要变更都记录在这里。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.2.5] · 2026-11-01
+
+### 修复
+
+- **dev-workflow-host 激活失败（插件页标红 Problem）**：board 路由被注册了两次——
+  宿主顶层挂载与 preset 会话内嵌挂载都默认开 `board`，connection 的 exact 路由注册表
+  拒绝重复，后挂载的 fiber 报「already registered」激活失败。现在路由唯一所有者是
+  宿主顶层挂载（preset 内嵌配置显式 `board: false`），并且 `registerBoardRoute` 遇到
+  重复注册降级为 no-op（路由已由第一个所有者服务），不再让重复变成红色报错。
+
 ## [0.2.4] · 2026-11-01
 
 ### 修复

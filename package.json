@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-dev-workflow",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": false,
   "description": "Lightweight dev workflow for DSH: a dev-assistant preset, a read-only kanban, and decisions that stay in the repo",
   "license": "MIT",
