@@ -43,6 +43,75 @@ function recordTool(name, description, parameters, execute) {
 function allRecords(ctx, config, exec, file) { return lines(join(storeFor(ctx, config, exec).dir, file)); }
 function latest(records, key) { const map = new Map(); for (const r of records) map.set(r[key], r); return [...map.values()]; }
 
+// A preset persona is one paragraph at the top of a context that grows to
+// dozens of steps; by the time a turn is forty tool calls in, the model is
+// reading tool results, not that paragraph. The measurement that motivated
+// this: in a real session `dev_context_get` ran at +1s, but
+// `dev_request_capture` only at +86s (after forty calls). A pre-step
+// reminder rides in the request history instead of waiting to be remembered.
+const REMINDER_EVERY_STEPS = 5;
+const REMINDER_ORDER = [
+  '用户带来新需求 → 先调用 dev_request_capture（原话 + 验收），再动业务文件；',
+  '用户在评价或纠正上一轮结果 → 先调用 dev_feedback_record（保留原话，不加工措辞）；',
+  '有可执行工作 → 调用 dev_task_plan 拆最少任务（验收 + 风险 + 依赖）；任务数为 0 时不要先写代码；',
+  '每次改动 → 调用 dev_verify 记录真实命令与退出码；收口 → 调用 dev_complete。',
+];
+const REMINDER_RULE = '只记录真实发生的事：没调用过的工具、没跑过的命令、没被确认过的偏好，一律不得写成记录。';
+
+function countRecords(dir) {
+  const count = (file) => lines(join(dir, file)).length;
+  return {
+    requests: count('requests.jsonl'),
+    tasks: count('tasks.jsonl'),
+    feedback: count('feedback.jsonl'),
+    verifications: count('verifications.jsonl'),
+    completions: count('completions.jsonl'),
+  };
+}
+
+/** Render the per-step workflow reminder that carries the live record counts. */
+export function renderReminder(counts) {
+  return [
+    `【研发闭环·运行期提醒】本会话已登记：需求 ${counts.requests} · 任务 ${counts.tasks} · 反馈 ${counts.feedback} · 验证 ${counts.verifications} · 完成 ${counts.completions}。`,
+    '按顺序执行：',
+    ...REMINDER_ORDER.map((line, index) => `${index + 1}) ${line}`),
+    REMINDER_RULE,
+  ].join('\n');
+}
+
+/**
+ * Append the reminder to the request history at the first step of every turn
+ * and every `reminderEverySteps` steps after that. Never throws into the agent
+ * loop: a broken reminder must not cost the user a turn.
+ * @returns disposer for the pre-step listener.
+ */
+export function installReminder(ctx, config = {}) {
+  if (typeof ctx?.on !== 'function') return () => {};
+  const every = Number.isInteger(config.reminderEverySteps) && config.reminderEverySteps > 0 ? config.reminderEverySteps : REMINDER_EVERY_STEPS;
+  const handler = async (payload, next) => {
+    const decision = await next();
+    try {
+      if (decision === undefined || decision.kind === 'reject' || payload?.signal?.aborted) return decision;
+      const step = payload?.step ?? 1;
+      if (every !== 1 && step !== 1 && step % every !== 1) return decision;
+      const root = resolve(config.projectRoot || payload?.agent?.session?.header?.cwd || process.cwd());
+      const dir = resolve(config.dataRoot || join(root, '.dsh-dev'));
+      const text = renderReminder(countRecords(dir));
+      const message = {
+        id: randomUUID(),
+        role: 'user',
+        content: [{ type: 'text', text }],
+        source: { kind: name, form: 'snapshot', sections: [{ name, text }] },
+      };
+      return { ...decision, messages: [...(decision.messages ?? []), message] };
+    } catch {
+      return decision;
+    }
+  };
+  const dispose = ctx.on('agent/pre-step', handler, { prepend: true });
+  return typeof dispose === 'function' ? dispose : () => {};
+}
+
 export function defineDevTools(ctx, config = {}) {
   const project = (exec) => storeFor(ctx, config, exec);
   return [
@@ -82,5 +151,7 @@ export function apply(ctx, rawConfig = {}) {
   const runtime = ctx.get('tools');
   if (!runtime?.register) return;
   const disposers = defineDevTools(ctx, config).map((tool) => runtime.register(tool));
+  // The reminder names the tools, so it is only meaningful when they exist.
+  if (config.reminder !== false) disposers.push(installReminder(ctx, config));
   ctx.on?.('dispose', () => disposers.forEach((dispose) => dispose?.()));
 }

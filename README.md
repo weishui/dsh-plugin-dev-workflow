@@ -112,6 +112,35 @@ plugin_manager install_bundle target=<本目录绝对路径>
 - `dev_complete` — 生成带证据的完成总结
 - `dev_knowledge_promote` — 仅在用户明确确认后沉淀知识
 
+## 运行期提醒：让“先登记”真的发生
+
+persona 只是上下文开头的一段话。回合一长，工具结果会把它挤远——我们在真机会话里量到：
+`dev_context_get` 在第 1 秒就调用了，但 `dev_request_capture` 拖到 **+86 秒、第 40 次工具调用之后**，
+`dev_feedback_record` 整轮没有触发。
+
+所以插件除了 persona 还做一件事：通过 `agent/pre-step` 在**第 1 步以及之后每 5 步**
+往请求历史里追加一条提醒，带当前项目的**真实记录计数**：
+
+```text
+【研发闭环·运行期提醒】本会话已登记：需求 1 · 任务 2 · 反馈 0 · 验证 0 · 完成 0。
+按顺序执行：
+1) 用户带来新需求 → 先调用 dev_request_capture（原话 + 验收），再动业务文件；
+2) 用户在评价或纠正上一轮结果 → 先调用 dev_feedback_record（保留原话，不加工措辞）；
+3) 有可执行工作 → 调用 dev_task_plan 拆最少任务（验收 + 风险 + 依赖）；任务数为 0 时不要先写代码；
+4) 每次改动 → 调用 dev_verify 记录真实命令与退出码；收口 → 调用 dev_complete。
+只记录真实发生的事：没调用过的工具、没跑过的命令、没被确认过的偏好，一律不得写成记录。
+```
+
+开关在 preset 里：`reminder: true`（`reminderEverySteps` 默认 5，设为 `false` 可关闭）。
+提醒只读 `<project>/.dsh-dev/`，不写状态、不新增记录；读取失败时原样放行，不会让回合失败。
+
+**怎么确认它在你机器上真的生效**：新会话选「研发助手 · Dev Assistant」，随便说一句需求，
+然后查会话日志里有没有这条记录（`kind` 为 `dev-assistant` 的注入消息）：
+
+```bash
+zstd -dc ~/.dsh/sessions/*/*/session.v4.jsonl.zstd | grep -c '研发闭环·运行期提醒'
+```
+
 ## 兼容性
 
 - DSH：`>=0.2.1-rc.2 <0.3.0`

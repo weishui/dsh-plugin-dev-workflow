@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { defineDevTools } from '../index.js';
+import { defineDevTools, installReminder, renderReminder } from '../index.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
@@ -84,6 +84,43 @@ try {
   const context = await tools.get('dev_context_get').execute({}, exec);
   if (context.context.tasks.length !== 1) throw new Error('context did not report the task');
   if (context.context.feedback.length !== 1) throw new Error('context did not report the feedback');
+
+  // --- runtime reminder: the persona paragraph is one line at the top of a
+  // long context. A real session proved it is not enough (dev_context_get at
+  // +1s, dev_request_capture only at +86s), so the reminder must ride in the
+  // request history — and it must carry the counts it claims.
+  if (!/^\s*reminder:\s*true$/m.test(patch)) throw new Error('preset must enable the runtime reminder');
+  if (!/^\s*reminderEverySteps:\s*5$/m.test(patch)) throw new Error('preset must declare reminderEverySteps');
+  for (const directive of ['dev_request_capture', 'dev_feedback_record', '前 2 次工具调用内必须']) {
+    if (!patch.includes(directive)) throw new Error(`persona is missing the ordering directive: ${directive}`);
+  }
+
+  const listeners = [];
+  installReminder({ on(event, listener) { listeners.push({ event, listener }); return () => listeners.pop(); } }, { reminderEverySteps: 5 });
+  if (listeners.length !== 1) throw new Error('reminder must register exactly one pre-step listener');
+  if (listeners[0].event !== 'agent/pre-step') throw new Error(`reminder hooked ${listeners[0].event}`);
+  const preStep = listeners[0].listener;
+  const turnStep = (step) => preStep({ agent: { session: { header: { cwd: dir } } }, step }, async () => ({ kind: 'continue', messages: [] }));
+
+  const firstStep = await turnStep(1);
+  if (firstStep.messages.length !== 1) throw new Error('reminder missing on step 1');
+  const injected = firstStep.messages[0];
+  if (injected.role !== 'user') throw new Error(`reminder must be a user-role message, got ${injected.role}`);
+  const injectedText = injected.content[0].text;
+  for (const needle of ['运行期提醒', '需求 1', '反馈 1', '任务 1', 'dev_verify', '不得写成记录']) {
+    if (!injectedText.includes(needle)) throw new Error(`reminder text is missing ${needle}`);
+  }
+  if (injected.source?.kind !== 'dev-assistant') throw new Error('reminder must attribute its source');
+
+  if ((await turnStep(3)).messages.length !== 0) throw new Error('reminder must be throttled between reminder steps');
+  if ((await turnStep(6)).messages.length !== 1) throw new Error('reminder must repeat at the configured interval');
+
+  const rejected = await preStep({ agent: { session: { header: { cwd: dir } } }, step: 1 }, async () => ({ kind: 'reject' }));
+  if (rejected.kind !== 'reject') throw new Error('reminder must not disturb a rejecting pre-step');
+
+  if (!renderReminder({ requests: 0, tasks: 0, feedback: 0, verifications: 0, completions: 0 }).includes('任务数为 0 时不要先写代码')) {
+    throw new Error('reminder must warn when no task exists');
+  }
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

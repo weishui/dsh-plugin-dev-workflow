@@ -2,6 +2,27 @@
 
 本项目的所有重要变更都记录在这里。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 修复
+
+- **persona 只在长回合开头起作用**：真机会话里 `dev_context_get` 在第 1 秒就调用了，
+  但 `dev_request_capture` 拖到第 86 秒、第 40 次工具调用之后才发生，`dev_feedback_record`
+  整轮没触发。persona 是上下文开头的一段话，回合越长越容易被工具结果挤出注意力。
+  现在插件通过 `agent/pre-step` 在**第 1 步以及之后每 5 步**往请求历史追加一条
+  运行期提醒（`reminder: true` / `reminderEverySteps: 5`），带真实记录计数与执行顺序；
+  提醒只读 `<project>/.dsh-dev/`，不写状态，异常时原样放行、不影响回合。
+- **persona 加时序硬约束**：收到用户消息后的前 2 次工具调用内必须先登记
+  （新需求 → `dev_request_capture`，对上一轮的反馈 → `dev_feedback_record`），
+  任务数为 0 时不得先写业务文件。
+
+### 验证
+
+- `node verify/smoke.mjs`：新增运行期提醒用例（第 1 步注入、第 3 步被节流、第 6 步重复、
+  reject 决策不受影响、计数与执行顺序文案齐全、source 归属为 `dev-assistant`）。
+- `dsh --profile web --dump-config`：`dev-assistant-tools` 行带 `reminder: true` /
+  `reminderEverySteps: 5` 正常组合进 profile。
+
 ## [0.1.0] · 2026-10-31
 
 首个公开版本：把研发对话变成可验证、可交接的闭环
