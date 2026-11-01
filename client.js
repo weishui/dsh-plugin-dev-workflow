@@ -220,16 +220,27 @@ window.__ModuleLoader__.load({
 .dw-warn{color:var(--dsw-alias-state-error-primary,#c0392b);margin:4px 0}
 `;
 
+    /**
+     * The shell's `workspaces.list` snapshot is an object — `{ items,
+     * pinnedSessionIds, archivedSessionIds }` — not a bare array. Normalize
+     * both shapes so one host version difference cannot empty the dropdown.
+     */
+    function workspaceItems(snapshot) {
+      if (Array.isArray(snapshot)) return snapshot;
+      if (Array.isArray(snapshot?.items)) return snapshot.items;
+      return [];
+    }
+
     function useWorkspaceStore(store) {
-      const [list, setList] = React.useState(() => store?.getSnapshot?.() ?? []);
+      const [list, setList] = React.useState(() => workspaceItems(store?.getSnapshot?.()));
       React.useEffect(() => {
         if (!store) return undefined;
-        const read = () => setList(store.getSnapshot?.() ?? []);
+        const read = () => setList(workspaceItems(store.getSnapshot?.()));
         read();
         if (typeof store.subscribe === 'function') return store.subscribe(read);
         return undefined;
       }, [store]);
-      return Array.isArray(list) ? list : [];
+      return list;
     }
 
     function Board(props) {
