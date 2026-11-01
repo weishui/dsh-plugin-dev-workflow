@@ -72,16 +72,19 @@ function render(node) {
 
 const header = `
 <div class="dw-bar">
-  <span class="dw-title">研发看板</span>
-  <span class="dw-sub">${escape(board.projectId)} · ${escape(board.root)}</span>
-  <span class="dw-spacer"></span>
-  <div class="dw-chips" role="tablist">
-    <button type="button" class="dw-chip" data-on="0">进行中<b>${collected.counts.open}</b></button>
-    <button type="button" class="dw-chip" data-on="0">已完成<b>${collected.counts.closed}</b></button>
-    <button type="button" class="dw-chip" data-on="1">全部<b>${collected.counts.all}</b></button>
+  <div class="dw-heading">
+    <h1 class="dw-title">研发看板</h1>
+    <p class="dw-sub" title="${escape(board.root)}">${escape(board.projectId)} · ${escape(board.root.split('/').pop())}</p>
   </div>
-  <select class="dw-select"><option>${escape(board.root.split('/').pop())}</option></select>
-  <button type="button" class="dw-refresh">刷新</button>
+  <div class="dw-tools">
+    <div class="dw-tabs" role="tablist">
+      <button type="button" class="dw-tab" data-on="0">进行中<b>${collected.counts.open}</b></button>
+      <button type="button" class="dw-tab" data-on="0">已完成<b>${collected.counts.closed}</b></button>
+      <button type="button" class="dw-tab" data-on="1">全部<b>${collected.counts.all}</b></button>
+    </div>
+    <select class="dw-select"><option>${escape(board.root.split('/').pop())}</option></select>
+    <button type="button" class="dw-refresh">刷新</button>
+  </div>
 </div>`;
 
 const html = `<!doctype html>

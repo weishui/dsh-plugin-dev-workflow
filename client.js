@@ -82,7 +82,7 @@ window.__ModuleLoader__.load({
           id: request.id,
           title: shorten(request.rawQuote, 110),
           meta: `${(request.acceptance ?? []).length} 条验收 · ${REQUEST_LABEL[request.status] ?? request.status ?? '已登记'}`,
-          note: request.scope ? shorten(request.scope, 60) : '',
+          note: request.scope ? `范围 · ${shorten(request.scope, 64)}` : '',
           time: shortTime(request.createdAt),
         })),
         queued: [],
@@ -97,7 +97,7 @@ window.__ModuleLoader__.load({
           // A task closed by a completion still carries `queued` in its own
           // record, so the label follows the column, not the stored status.
           meta: `${(task.acceptance ?? []).length} 条验收 · ${task.closed ? '已完成' : (STATUS_LABEL[task.status] ?? task.status ?? '待办')}`,
-          note: task.risk ? shorten(task.risk, 60) : '',
+          note: task.risk ? `风险 · ${shorten(task.risk, 64)}` : '',
           time: shortTime(task.createdAt),
         });
       }
@@ -134,44 +134,51 @@ window.__ModuleLoader__.load({
             : column.items.map(cardNode)));
     }
 
-    // Colours are the shell's own design tokens (ui-theme), so the board follows
-    // the app's light/dark setting instead of pinning one. Every token carries a
-    // light fallback so the offline preview — which has no shell CSS — still
-    // renders the light palette rather than an unstyled page.
+    // Editorial, not dashboard: hairline rules and whitespace carry the
+    // structure, so no card borders, no shadows, and no accent bars. Colours are
+    // the shell's own ui-theme tokens with light fallbacks, so the board follows
+    // the app's light/dark setting and the offline preview (no shell CSS) still
+    // renders the light palette.
     const CSS = `
-.dw-board{background:var(--dsw-alias-bg-base,#ffffff);color:var(--dsw-alias-label-primary,#1b1f26);
-  font:13px/1.5 ui-sans-serif,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
-  height:100%;display:flex;flex-direction:column;min-height:0}
-.dw-bar{display:flex;gap:10px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--dsw-alias-border-l2,#0000001a);flex-wrap:wrap}
-.dw-title{font-size:15px;font-weight:650;letter-spacing:.2px}
-.dw-sub{color:var(--dsw-alias-label-tertiary,#81858c);font-size:12px}
-.dw-spacer{flex:1}
-.dw-chips{display:flex;gap:4px;background:var(--dsw-static-neutral-bluish-60,#f5f6f7);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:8px;padding:3px}
-.dw-chip{border:0;background:transparent;color:var(--dsw-alias-label-secondary,#61666b);font:inherit;padding:5px 11px;border-radius:6px;cursor:pointer}
-.dw-chip:hover{color:var(--dsw-alias-label-primary,#1b1f26)}
-.dw-chip[data-on="1"]{background:var(--dsw-static-neutral-bluish-00,#ffffff);color:var(--dsw-alias-label-primary,#1b1f26);box-shadow:0 1px 2px #0000001f}
-.dw-chip b{font-weight:650;margin-left:4px;opacity:.7}
-.dw-select{background:var(--dsw-static-neutral-bluish-00,#ffffff);color:var(--dsw-alias-label-primary,#1b1f26);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:8px;padding:6px 9px;font:inherit;max-width:320px}
-.dw-refresh{background:var(--dsw-static-neutral-bluish-00,#ffffff);color:var(--dsw-alias-label-primary,#1b1f26);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:8px;padding:6px 11px;font:inherit;cursor:pointer}
-.dw-refresh:hover{border-color:var(--dsw-static-deepseek-400,#7aaaff);color:var(--dsw-static-deepseek-600,#4868b2)}
-.dw-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding:14px 18px 20px;overflow:auto;flex:1;min-height:0;align-items:start}
-.dw-col{background:var(--dsw-specific-tip,#f9fafb);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:12px;padding:12px;min-height:120px}
-.dw-col-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.dw-col-title{font-weight:650}
-.dw-col-count{font-size:12px;color:var(--dsw-alias-label-tertiary,#81858c);background:var(--dsw-static-neutral-bluish-00,#ffffff);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:999px;padding:0 8px}
-.dw-col-hint{margin:4px 0 10px;color:var(--dsw-alias-label-tertiary,#81858c);font-size:11.5px}
-.dw-col-body{display:flex;flex-direction:column;gap:8px}
-.dw-card{background:var(--dsw-static-neutral-bluish-00,#ffffff);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:9px;padding:10px 11px;box-shadow:0 1px 2px #0000000a}
-.dw-card[data-kind="request"]{border-left:3px solid var(--dsw-static-blue-450,#4d93f8)}
-.dw-card-title{font-weight:600;margin-bottom:4px;word-break:break-word}
-.dw-card-meta{color:var(--dsw-alias-label-tertiary,#81858c);font-size:11.5px}
-.dw-card-note{color:var(--dsw-alias-label-secondary,#61666b);font-size:11.5px;margin-top:3px}
-.dw-card-foot{display:flex;justify-content:space-between;gap:8px;margin-top:7px;color:var(--dsw-alias-label-tertiary,#81858c);font-size:10.5px}
-.dw-card-foot code{font-size:10.5px}
-.dw-empty{color:var(--dsw-alias-label-tertiary,#81858c);font-size:12px;text-align:center;padding:16px 0}
-.dw-state{color:var(--dsw-alias-label-secondary,#61666b);font-size:12.5px;padding:28px 20px;line-height:1.7}
-.dw-state b{color:var(--dsw-alias-label-primary,#1b1f26)}
-.dw-warn{color:var(--dsw-alias-state-error-primary,#ec1313)}
+.dw-board{background:var(--dsw-alias-bg-base,#ffffff);color:var(--dsw-alias-label-primary,#17191c);
+  font:13px/1.55 ui-sans-serif,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  height:100%;display:flex;flex-direction:column;min-height:0;-webkit-font-smoothing:antialiased}
+.dw-bar{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding:30px 36px 0;flex-wrap:wrap}
+.dw-heading{min-width:0}
+.dw-title{margin:0;font-size:20px;font-weight:600;letter-spacing:-.012em}
+.dw-sub{margin:4px 0 0;color:var(--dsw-alias-label-tertiary,#8b8f96);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:62ch}
+.dw-tools{display:flex;align-items:flex-end;gap:22px;flex-wrap:wrap}
+.dw-tabs{display:flex;gap:20px;border-bottom:1px solid var(--dsw-alias-border-l2,#0000001a)}
+.dw-tab{border:0;background:none;padding:0 0 11px;margin-bottom:-1px;color:var(--dsw-alias-label-tertiary,#8b8f96);font:inherit;font-size:13px;cursor:pointer;border-bottom:1px solid transparent}
+.dw-tab:hover{color:var(--dsw-alias-label-primary,#17191c)}
+.dw-tab[data-on="1"]{color:var(--dsw-alias-label-primary,#17191c);border-bottom-color:var(--dsw-alias-label-primary,#17191c)}
+.dw-tab b{margin-left:6px;font-weight:400;color:inherit;opacity:.6;font-variant-numeric:tabular-nums}
+.dw-select{appearance:none;-webkit-appearance:none;border:0;background-color:transparent;color:var(--dsw-alias-label-secondary,#61666b);font:inherit;font-size:12.5px;
+  padding:0 18px 12px 0;margin-bottom:-1px;max-width:260px;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 7px) 42%,calc(100% - 3px) 42%;background-size:4px 4px,4px 4px;background-repeat:no-repeat}
+.dw-select:hover{color:var(--dsw-alias-label-primary,#17191c)}
+.dw-refresh{border:0;background:none;color:var(--dsw-alias-label-tertiary,#8b8f96);font:inherit;font-size:12.5px;padding:0 0 12px;cursor:pointer}
+.dw-refresh:hover{color:var(--dsw-alias-label-primary,#17191c)}
+.dw-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:44px;padding:26px 36px 48px;overflow:auto;flex:1;min-height:0;align-items:start;border-top:1px solid var(--dsw-alias-border-l2,#0000001a)}
+.dw-col{min-height:140px}
+.dw-col-head{display:flex;align-items:baseline;gap:9px;padding-bottom:10px;border-bottom:1px solid var(--dsw-alias-border-l3,#0000001f)}
+.dw-col-title{font-size:13px;font-weight:600;letter-spacing:.01em}
+.dw-col-count{font-size:12px;color:var(--dsw-alias-label-tertiary,#9aa0a6);font-variant-numeric:tabular-nums}
+.dw-col-hint{margin:10px 0 0;color:var(--dsw-alias-label-tertiary,#a0a5ab);font-size:11.5px}
+.dw-col-body{display:flex;flex-direction:column}
+.dw-card{padding:15px 0 16px;border-bottom:1px solid var(--dsw-alias-border-l1,#0000000f)}
+.dw-card:last-child{border-bottom:0}
+.dw-card-title{font-size:13.5px;font-weight:500;line-height:1.5;margin-bottom:6px;word-break:break-word}
+.dw-card[data-kind="request"] .dw-card-title{font-weight:600}
+.dw-card-meta{color:var(--dsw-alias-label-secondary,#61666b);font-size:12px;font-variant-numeric:tabular-nums}
+.dw-card-note{color:var(--dsw-alias-label-tertiary,#8b8f96);font-size:11.5px;margin-top:5px;line-height:1.55}
+.dw-card-foot{display:flex;justify-content:space-between;gap:12px;margin-top:9px;color:var(--dsw-alias-label-tertiary,#a8adb3);font-size:10.5px;font-variant-numeric:tabular-nums}
+.dw-card-foot code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px}
+.dw-empty{color:var(--dsw-alias-label-tertiary,#a8adb3);font-size:12px;padding:20px 0}
+.dw-state{color:var(--dsw-alias-label-secondary,#61666b);font-size:12.5px;padding:34px 36px;line-height:1.8}
+.dw-state b{color:var(--dsw-alias-label-primary,#17191c);font-weight:600}
+.dw-warn{color:var(--dsw-alias-state-error-primary,#c0392b);margin:4px 0}
 `;
 
     function useWorkspaceStore(store) {
@@ -235,23 +242,25 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'dw-board' },
         h('style', { dangerouslySetInnerHTML: { __html: CSS } }),
         h('div', { className: 'dw-bar' },
-          h('span', { className: 'dw-title' }, '研发看板'),
-          h('span', { className: 'dw-sub' }, board?.projectId ? `${board.projectId} · ${board.root}` : '读取 `.dsh-dev` 记录'),
-          h('span', { className: 'dw-spacer' }),
-          h('div', { className: 'dw-chips', role: 'tablist' }, FILTERS.map((option) => h('button', {
-            key: option.id,
-            type: 'button',
-            className: 'dw-chip',
-            'data-on': filter === option.id ? '1' : '0',
-            onClick: () => setFilter(option.id),
-          }, option.label, h('b', null, String(view.counts[option.id]))))),
-          h('select', {
+          h('div', { className: 'dw-heading' },
+            h('h1', { className: 'dw-title' }, '研发看板'),
+            h('p', { className: 'dw-sub', title: board?.root ?? '' },
+              board?.projectId ? `${board.projectId} · ${board.root.split('/').pop()}` : '读取 .dsh-dev 记录')),
+          h('div', { className: 'dw-tools' },
+            h('div', { className: 'dw-tabs', role: 'tablist' }, FILTERS.map((option) => h('button', {
+              key: option.id,
+              type: 'button',
+              className: 'dw-tab',
+              'data-on': filter === option.id ? '1' : '0',
+              onClick: () => setFilter(option.id),
+            }, option.label, h('b', null, String(view.counts[option.id]))))),
+            h('select', {
             className: 'dw-select',
             value: active,
             'aria-label': '选择工作区',
             onChange: (event) => choose(event.target.value),
           }, options.map((option) => h('option', { key: option.id, value: option.id }, option.label))),
-          h('button', { type: 'button', className: 'dw-refresh', onClick: () => setTick((value) => value + 1) }, loading ? '刷新中…' : '刷新')),
+            h('button', { type: 'button', className: 'dw-refresh', onClick: () => setTick((value) => value + 1) }, loading ? '刷新中…' : '刷新'))),
         error
           ? h('div', { className: 'dw-state' }, h('b', null, '看板读不到这台机器的记录。'), h('div', { className: 'dw-warn' }, error),
             h('div', null, '会话与 dev_* 工具不受影响；确认 dsh web 已重启到带看板版本的插件。'))

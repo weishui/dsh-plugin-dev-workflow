@@ -14,6 +14,9 @@
   completions；非绝对路径、不存在、指向文件一律 400；响应 `cache-control: no-store`。
 - **状态推导**：任务「已完成」= 自身 `succeeded/cancelled`，或在 `completions.jsonl` 里有收口
   记录（`dev_complete` 从不回写 tasks.jsonl）。
+- **视觉**：编辑式排版——发丝分隔线、无卡片边框与阴影、无彩色强调条；配色改用 shell 的
+  ui-theme 设计变量（浅色回退），跟随应用浅/深主题。卡片上的范围/风险字段加了标签前缀，
+  标题栏只显示项目 id 与工作区目录名（完整路径进 tooltip）。
 - **离线预览 harness**：`npm run preview` 用 `readBoard()` 的真实数据 + client 的同一套
   `collect()` / `columnNode()` / CSS 渲染，再用本机 Chrome 截图到 `docs/preview-board.png`。
 
