@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-dev-workflow",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "DSH development assistant for request, feedback, task, verification, and completion workflows",
   "license": "MIT",

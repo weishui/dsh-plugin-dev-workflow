@@ -145,7 +145,7 @@ zstd -dc ~/.dsh/sessions/*/*/session.v4.jsonl.zstd | grep -c '研发闭环·运�
 
 - DSH：`>=0.2.1-rc.2 <0.3.0`
 - Node.js：`>=22.19.0`
-- 当前版本：`0.1.0`
+- 当前版本：`0.1.1`
 
 ## 开发
 

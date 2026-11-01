@@ -2,7 +2,7 @@
 
 本项目的所有重要变更都记录在这里。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.1.1] · 2026-11-01
 
 ### 修复
 
@@ -22,6 +22,11 @@
   reject 决策不受影响、计数与执行顺序文案齐全、source 归属为 `dev-assistant`）。
 - `dsh --profile web --dump-config`：`dev-assistant-tools` 行带 `reminder: true` /
   `reminderEverySteps: 5` 正常组合进 profile。
+
+### 打包
+
+- `CHANGELOG.md` 进入 tarball：0.1.0 发布的包漏了这份文档（`files` 白名单早于该文件），
+  0.1.1 起对齐。
 
 ## [0.1.0] · 2026-10-31
 
