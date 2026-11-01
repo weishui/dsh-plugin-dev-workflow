@@ -1,4 +1,14 @@
 - insert:
+    # 宿主顶层挂载本包：client 模块组合按宿主树里「包名 + 活 fiber」的 loader 条目
+    # 发现浏览器 bundle（ctx.loader.entries() → entry.options.name）。本包若只在
+    # preset 内嵌挂载，宿主层没有本包的 fiber，看板 client 永远进不了页面模块图，
+    # 侧边栏「研发看板」就不会出现。这里只让宿主注册只读看板路由；
+    # dev_* 工具与运行期提醒仍由会话内 preset 的 dev-assistant-tools 负责。
+    - id: dev-workflow-host
+      name: 'dsh-plugin-dev-workflow'
+      config:
+        tools: false
+        reminder: false
     - id: preset-dev-assistant
       name: '@deepseek-ai/dsh-agent-preset'
       config:
