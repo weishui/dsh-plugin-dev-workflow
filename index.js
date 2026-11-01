@@ -247,32 +247,44 @@ export function registerBoardRoute(ctx, config = {}) {
   const mount = (scope) => {
     const registry = scope?.connection?.fetch;
     if (typeof registry?.register !== 'function') return () => {};
-    return registry.register({
-      path: BOARD_ROUTE,
-      methods: ['GET'],
-      requestBody: 'buffered',
-      fetch: async (request) => {
-        let root = '';
-        let closedLimit;
-        let requestLimit;
-        try {
-          const url = new URL(request.url);
-          root = url.searchParams.get('root') || '';
-          closedLimit = url.searchParams.get('closedLimit') ?? undefined;
-          requestLimit = url.searchParams.get('requestLimit') ?? undefined;
-        } catch { root = ''; }
-        if (!root) root = config.projectRoot || process.cwd();
-        if (!isAbsolute(root)) return boardResponse({ error: 'root must be an absolute path' }, 400);
-        let stat;
-        try { stat = statSync(root); } catch { return boardResponse({ error: `root not found: ${root}` }, 400); }
-        if (!stat.isDirectory()) return boardResponse({ error: `root is not a directory: ${root}` }, 400);
-        try {
-          return boardResponse(readBoard(root, { ...config, closedLimit, requestLimit }), 200);
-        } catch (error) {
-          return boardResponse({ error: `board read failed: ${error?.message ?? 'unknown'}` }, 500);
-        }
-      },
-    });
+    let handle;
+    try {
+      handle = registry.register({
+        path: BOARD_ROUTE,
+        methods: ['GET'],
+        requestBody: 'buffered',
+        fetch: async (request) => {
+          let root = '';
+          let closedLimit;
+          let requestLimit;
+          try {
+            const url = new URL(request.url);
+            root = url.searchParams.get('root') || '';
+            closedLimit = url.searchParams.get('closedLimit') ?? undefined;
+            requestLimit = url.searchParams.get('requestLimit') ?? undefined;
+          } catch { root = ''; }
+          if (!root) root = config.projectRoot || process.cwd();
+          if (!isAbsolute(root)) return boardResponse({ error: 'root must be an absolute path' }, 400);
+          let stat;
+          try { stat = statSync(root); } catch { return boardResponse({ error: `root not found: ${root}` }, 400); }
+          if (!stat.isDirectory()) return boardResponse({ error: `root is not a directory: ${root}` }, 400);
+          try {
+            return boardResponse(readBoard(root, { ...config, closedLimit, requestLimit }), 200);
+          } catch (error) {
+            return boardResponse({ error: `board read failed: ${error?.message ?? 'unknown'}` }, 500);
+          }
+        },
+      });
+    } catch (error) {
+      // Fetch routes are exact-path unique per host. The same plugin can be
+      // mounted twice (host-level board entry + session preset), and the
+      // second registration then throws "already registered", failing that
+      // entry's activation with a red "Problem" badge. The first owner
+      // already serves the route, so degrade to a no-op instead.
+      if (String(error?.message ?? error).includes('already registered')) return () => {};
+      throw error;
+    }
+    return handle;
   };
   // The host hands `connection` to `apply`'s context when the row composes it;
   // when the service is not visible yet, wait for it instead of skipping the

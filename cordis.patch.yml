@@ -21,6 +21,10 @@
             name: 'dsh-plugin-dev-workflow'
             config:
               tools: true
+              # 看板路由由宿主顶层挂载（dev-workflow-host）独占注册；会话内
+              # 再注册同一路由会被 connection 判「already registered」，导致
+              # 激活失败（0.2.4 用户实报）。这里显式关闭会话侧的路由注册。
+              board: false
               # 运行期提醒：persona 只是上下文开头的一段话，长回合里会被工具结果挤远。
               # 这个开关让插件在每一步（第 1 步 + 之后每 5 步）往请求历史里追加一条
               # 带真实记录计数的提醒，实测能压住"第 40 次工具调用才想起登记需求"的惯性。

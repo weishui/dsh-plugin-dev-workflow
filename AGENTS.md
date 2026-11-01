@@ -68,7 +68,9 @@ node verify/preview.mjs  # 可选：重新渲染看板截图
    组合只认宿主树里「包名 + 活 fiber」的 loader 条目；本包只随 preset 挂载时宿主层
    没有 fiber，组合**静默跳过**——无报错、插件列表无异常、重启无效（0.2.3 之前正是
    这个坑，见 `docs/log/2026-11-01-0.2.3.md`）。smoke 目前只断言行存在，不校验挂载
-   层级；删掉这一条不会红，但入口会消失。
+   层级；删掉这一条不会红，但入口会消失。这条挂载还是 board 路由的**唯一所有者**：
+   preset 内嵌挂载带 `board: false`，两边都开会被 connection 判「already registered」，
+   后挂载的 fiber 激活失败（0.2.4 用户实报，0.2.5 修复）。
 
 ## 行为约定（smoke 之外，但同样硬）
 
