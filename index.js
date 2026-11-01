@@ -3,7 +3,9 @@ import { join, resolve, basename, isAbsolute } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 
 export const name = 'dev-assistant';
-export const inject = ['tools', 'workingDirectory'];
+// Board routing uses ctx.connection.fetch; declare it so Cordis exposes the
+// service during activation instead of throwing on undeclared context access.
+export const inject = ['tools', 'workingDirectory', 'connection'];
 
 const TYPES = ['preset', 'convention', 'goal', 'preference'];
 const now = () => new Date().toISOString();
