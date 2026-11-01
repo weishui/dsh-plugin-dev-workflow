@@ -46,6 +46,9 @@ window.__ModuleLoader__.load({
     const REQUEST_LABEL = {
       captured: '已登记',
       clarifying: '待补验收',
+      delivered: '已交付',
+      invalid: '已作废',
+      superseded: '已取代',
     };
 
     /** Which column one task belongs to. Closed wins over its own stored status. */
@@ -135,10 +138,14 @@ window.__ModuleLoader__.load({
       // "全部 220" would be a lie when 500 records exist. Each column header
       // shows rendered/total whenever the window truncated it.
       const totals = board?.counts ?? {};
-      const totalRequests = Number.isInteger(totals.requests) ? totals.requests : columns.requests.length;
+      // Host 0.2.6+ splits requests into open/closed; older hosts only report
+      // the total, so every number has a fallback that keeps the chips honest.
+      const totalRequests = Number.isInteger(totals.openRequests) ? totals.openRequests : columns.requests.length;
+      const totalClosedRequests = Number.isInteger(totals.closedRequests) ? totals.closedRequests : 0;
+      const totalAllRequests = Number.isInteger(totals.requests) ? totals.requests : totalRequests + totalClosedRequests;
       const totalOpen = Number.isInteger(totals.openTasks) ? totals.openTasks : columns.queued.length + columns.waiting.length;
       const totalClosed = Number.isInteger(totals.closedTasks) ? totals.closedTasks : columns.closed.length;
-      const counts = { open: totalRequests + totalOpen, closed: totalClosed, all: totalRequests + totalOpen + totalClosed };
+      const counts = { open: totalRequests + totalOpen, closed: totalClosed + totalClosedRequests, all: totalAllRequests + totalOpen + totalClosed };
       return { columns: visibleColumns, counts };
     }
 

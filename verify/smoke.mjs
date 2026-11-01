@@ -55,7 +55,7 @@ try {
   };
   const exec = { agent: { id: 'session-smoke', session } };
   const tools = new Map(defineDevTools(ctx).map((tool) => [tool.name, tool]));
-  for (const name of ['dev_context_get', 'dev_request_capture', 'dev_feedback_record', 'dev_task_plan', 'dev_verify', 'dev_complete', 'dev_knowledge_promote']) {
+  for (const name of ['dev_context_get', 'dev_request_capture', 'dev_request_close', 'dev_feedback_record', 'dev_task_plan', 'dev_verify', 'dev_complete', 'dev_knowledge_promote']) {
     if (!tools.has(name)) throw new Error(`missing tool: ${name}`);
   }
 
@@ -148,6 +148,24 @@ try {
   await tools.get('dev_task_plan').execute({ requestId: request.id, title: '看板空态文案', acceptance: ['无记录时给出解释'] }, exec);
   if (readBoard(dir, {}).tasks.length !== before + 1) throw new Error('each planned task must be its own record');
 
+  // --- request terminal state: closing leaves the open 需求 column ----------
+  const closedRequest = await tools.get('dev_request_close').execute(
+    { requestId: request.id, status: 'delivered', note: 'shipped with the login-error fix' },
+    exec,
+  );
+  if (closedRequest.status !== 'delivered') throw new Error(`request not closed: ${closedRequest.status}`);
+  const closedRequestBoard = readBoard(dir, {});
+  if (closedRequestBoard.requests.some((item) => item.id === request.id)) throw new Error('closed request must leave the open column');
+  if (closedRequestBoard.counts.closedRequests !== 1 || closedRequestBoard.counts.openRequests !== 0) {
+    throw new Error(`request counts wrong: ${JSON.stringify(closedRequestBoard.counts)}`);
+  }
+  if (closedRequestBoard.counts.requests !== 1) throw new Error('total request count must stay unique per requestId');
+  let closeError = null;
+  try { await tools.get('dev_request_close').execute({ requestId: 'req_missing', status: 'invalid' }, exec); } catch (error) { closeError = error; }
+  if (!closeError) throw new Error('closing an unknown request must throw');
+  await tools.get('dev_request_close').execute({ requestId: request.id, status: 'delivered' }, exec);
+  if (readBoard(dir, {}).counts.closedRequests !== 1) throw new Error('latest close must win without duplicating');
+
   // --- board route: validates the browser-supplied root before reading ------
   let route = null;
   const mounting = { connection: { fetch: { register(spec) { route = spec; return () => { route = null; }; } } } };
@@ -199,8 +217,8 @@ try {
   if (closedView.columns.length !== 1) throw new Error('closed filter must show only closed');
   if (allView.columns.length !== 4) throw new Error('all filter must show every column');
   if (openView.counts.open + openView.counts.closed !== openView.counts.all) throw new Error('filter counts must add up');
-  if (allView.counts.all !== payload.requests.length + payload.tasks.length) {
-    throw new Error(`all count ${allView.counts.all} != records ${payload.requests.length + payload.tasks.length}`);
+  if (allView.counts.all !== payload.counts.requests + payload.counts.tasks) {
+    throw new Error(`all count ${allView.counts.all} != records ${payload.counts.requests + payload.counts.tasks}`);
   }
   const emptyView = view.collect({ requests: [], tasks: [] }, 'all');
   if (emptyView.counts.all !== 0) throw new Error('empty payload must count zero');

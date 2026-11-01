@@ -62,10 +62,15 @@ const REMINDER_ORDER = [
 const REMINDER_RULE = '只记录真实发生的事：没调用过的工具、没跑过的命令、没被确认过的偏好，一律不得写成记录。';
 
 function countRecords(dir) {
-  const count = (file) => lines(join(dir, file)).length;
+  // Close lines append to requests.jsonl for an existing requestId, so raw
+  // line counts would inflate the reminder. Count records, not lines.
+  const count = (file, key) => {
+    const records = lines(join(dir, file));
+    return key ? new Set(records.map((record) => record?.[key]).filter(Boolean)).size : records.length;
+  };
   return {
-    requests: count('requests.jsonl'),
-    tasks: count('tasks.jsonl'),
+    requests: count('requests.jsonl', 'requestId'),
+    tasks: count('tasks.jsonl', 'taskId'),
     feedback: count('feedback.jsonl'),
     verifications: count('verifications.jsonl'),
     completions: count('completions.jsonl'),
@@ -114,6 +119,9 @@ export function installReminder(ctx, config = {}) {
   const dispose = ctx.on('agent/pre-step', handler, { prepend: true });
   return typeof dispose === 'function' ? dispose : () => {};
 }
+
+/** Request statuses that leave the board's open 需求 column (latest line wins). */
+const REQUEST_TERMINAL = new Set(['delivered', 'invalid', 'superseded']);
 
 /**
  * Read one project's records into the shape the board renders.
@@ -167,6 +175,8 @@ export function readBoard(root, config = {}) {
       latestFeedback: feedbackFor(`request:${record.requestId}`),
     }))
     .sort(newestFirst);
+  const openRequests = allRequests.filter((request) => !REQUEST_TERMINAL.has(request.status));
+  const closedRequests = allRequests.filter((request) => REQUEST_TERMINAL.has(request.status));
   const allTasks = latest(allLines(join(dir, 'tasks.jsonl')), 'taskId').map((record) => {
     const completion = completionByTask.get(record.taskId);
     const status = record.status ?? 'queued';
@@ -189,7 +199,7 @@ export function readBoard(root, config = {}) {
 
   const openTasks = allTasks.filter((task) => !task.closed);
   const closedTasks = allTasks.filter((task) => task.closed);
-  const requests = allRequests.slice(0, requestLimit);
+  const requests = openRequests.slice(0, requestLimit);
   const tasks = [...openTasks, ...closedTasks.slice(0, closedLimit)];
 
   return {
@@ -198,6 +208,8 @@ export function readBoard(root, config = {}) {
     root: absolute,
     counts: {
       requests: allRequests.length,
+      openRequests: openRequests.length,
+      closedRequests: closedRequests.length,
       tasks: allTasks.length,
       feedback: allLines(join(dir, 'feedback.jsonl')).length,
       verifications: allLines(join(dir, 'verifications.jsonl')).length,
@@ -207,7 +219,7 @@ export function readBoard(root, config = {}) {
     },
     // What was cut, so the board can offer "显示更多" without guessing.
     window: {
-      requests: { shown: requests.length, total: allRequests.length, limit: requestLimit },
+      requests: { shown: requests.length, total: openRequests.length, limit: requestLimit },
       closedTasks: { shown: Math.min(closedTasks.length, closedLimit), total: closedTasks.length, limit: closedLimit },
     },
     requests,
@@ -309,6 +321,15 @@ export function defineDevTools(ctx, config = {}) {
     recordTool('dev_request_capture', '登记用户需求，保留原话；缺少验收条件时状态为 clarifying，不自动开工。', {
       type: 'object', required: ['rawQuote'], properties: { rawQuote: { type: 'string' }, normalized: { type: 'string' }, acceptance: { type: 'array', items: { type: 'string' } }, scope: { type: 'string' }, priority: { type: 'string' } }, additionalProperties: false,
     }, async (args, exec) => { const p = project(exec); const r = append(p.dir, 'requests.jsonl', { schemaVersion: 1, requestId: id('req'), projectId: p.projectId, rawQuote: args.rawQuote, normalized: args.normalized ?? '', acceptance: args.acceptance ?? [], scope: args.scope ?? '', priority: args.priority ?? 'normal', sourceSessionId: exec?.agent?.id ?? null, status: args.acceptance?.length ? 'captured' : 'clarifying', createdAt: now() }); return { id: r.requestId, status: r.status, refs: { file: join(p.dir, 'requests.jsonl') }, text: `已登记需求 ${r.requestId}，状态 ${r.status}。` }; }),
+    recordTool('dev_request_close', '给需求一个终态：delivered（已交付）/ invalid（已作废）/ superseded（已被取代）。append-only 追加状态行，不改历史；看板需求列不再陈列已终结需求。', {
+      type: 'object', required: ['requestId', 'status'], properties: { requestId: { type: 'string' }, status: { type: 'string', enum: ['delivered', 'invalid', 'superseded'] }, note: { type: 'string' } }, additionalProperties: false,
+    }, async (args, exec) => {
+      const p = project(exec);
+      const known = latest(allRecords(ctx, config, exec, 'requests.jsonl'), 'requestId');
+      if (!known.some((record) => record.requestId === args.requestId)) throw new Error(`unknown requestId: ${args.requestId}`);
+      const r = append(p.dir, 'requests.jsonl', { schemaVersion: 1, requestId: args.requestId, projectId: p.projectId, status: args.status, note: args.note ?? '', closedBy: exec?.agent?.id ?? null, closedAt: now() });
+      return { id: r.requestId, status: r.status, refs: { file: join(p.dir, 'requests.jsonl') }, text: `需求 ${r.requestId} 已置为 ${r.status}。` };
+    }),
     recordTool('dev_feedback_record', '追加记录用户反馈原话；不会自动修改代码或晋升长期知识。', {
       type: 'object', required: ['rawQuote'], properties: { rawQuote: { type: 'string' }, requestId: { type: 'string' }, taskId: { type: 'string' }, category: { type: 'string', enum: ['bug', 'quality', 'scope', 'preference', 'process'] }, decision: { type: 'string', enum: ['accept', 'reject', 'defer', 'needs-clarification'] }, evidenceRefs: { type: 'array', items: { type: 'string' } }, impact: { type: 'string' } }, additionalProperties: false,
     }, async (args, exec) => { const p = project(exec); const r = append(p.dir, 'feedback.jsonl', { schemaVersion: 1, feedbackId: id('fb'), projectId: p.projectId, ...args, actor: 'user', createdAt: now() }); return { id: r.feedbackId, status: 'recorded', refs: { file: join(p.dir, 'feedback.jsonl') }, text: `已记录反馈 ${r.feedbackId}。` }; }),
