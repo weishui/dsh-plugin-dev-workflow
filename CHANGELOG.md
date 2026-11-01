@@ -7,7 +7,7 @@
 ### 新增
 
 - **研发看板（Web）**：左侧边栏「研发看板」打开一个 main 面板，把 `.dsh-dev/` 的记录排成
-  四列——需求 / 待办 / 等确认 / 已完成，并可按 **进行中 / 已完成 / 全部** 过滤；计数与列表
+  四列——需求 / 待办 / 待确认 / 已完成，并可按 **进行中 / 已完成 / 全部** 过滤；计数与列表
   同源。工作区下拉可切换项目。
 - **只读 host 路由** `GET /api/dsh-dev-assistant.board?root=<绝对路径>`：校验 `root` 是真实
   目录后，只读取 `<root>/.dsh-dev/` 下的 requests / tasks / feedback / verifications /

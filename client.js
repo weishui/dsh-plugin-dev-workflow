@@ -3,7 +3,7 @@
  *
  * Why this exists: the records are append-only JSONL, which is fine for a
  * machine and useless for a person. This renders the same records as a board —
- * 需求 / 待办 / 等确认 / 已完成 — that can be switched between 进行中 / 已完成 /
+ * 需求 / 待办 / 待确认 / 已完成 — that can be switched between 进行中 / 已完成 /
  * 全部.
  *
  * It only ever reads: the host route is GET-only and serves `<root>/.dsh-dev`,
@@ -32,13 +32,13 @@ window.__ModuleLoader__.load({
     const COLUMNS = [
       { id: 'requests', title: '需求', hint: '用户原话 + 验收条件', filter: 'open' },
       { id: 'queued', title: '待办', hint: '已建任务、还没开始', filter: 'open' },
-      { id: 'waiting', title: '等确认', hint: '等你拍板或确认', filter: 'open' },
+      { id: 'waiting', title: '待确认', hint: '需要你点头才能继续（waiting-user）', filter: 'open' },
       { id: 'closed', title: '已完成', hint: '有收口记录', filter: 'closed' },
     ];
 
     const STATUS_LABEL = {
       queued: '待办',
-      'waiting-user': '等确认',
+      'waiting-user': '待确认',
       succeeded: '已完成',
       cancelled: '已取消',
     };
@@ -134,39 +134,44 @@ window.__ModuleLoader__.load({
             : column.items.map(cardNode)));
     }
 
+    // Colours are the shell's own design tokens (ui-theme), so the board follows
+    // the app's light/dark setting instead of pinning one. Every token carries a
+    // light fallback so the offline preview — which has no shell CSS — still
+    // renders the light palette rather than an unstyled page.
     const CSS = `
-.dw-board{--dw-bg:#0f1319;--dw-panel:#151b24;--dw-line:#243040;--dw-ink:#e6edf6;--dw-dim:#8b9bb0;--dw-accent:#5b9dff;
-  background:var(--dw-bg);color:var(--dw-ink);font:13px/1.5 ui-sans-serif,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+.dw-board{background:var(--dsw-alias-bg-base,#ffffff);color:var(--dsw-alias-label-primary,#1b1f26);
+  font:13px/1.5 ui-sans-serif,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
   height:100%;display:flex;flex-direction:column;min-height:0}
-.dw-bar{display:flex;gap:10px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--dw-line);flex-wrap:wrap}
+.dw-bar{display:flex;gap:10px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--dsw-alias-border-l2,#0000001a);flex-wrap:wrap}
 .dw-title{font-size:15px;font-weight:650;letter-spacing:.2px}
-.dw-sub{color:var(--dw-dim);font-size:12px}
+.dw-sub{color:var(--dsw-alias-label-tertiary,#81858c);font-size:12px}
 .dw-spacer{flex:1}
-.dw-chips{display:flex;gap:6px;background:var(--dw-panel);border:1px solid var(--dw-line);border-radius:8px;padding:3px}
-.dw-chip{border:0;background:transparent;color:var(--dw-dim);font:inherit;padding:5px 11px;border-radius:6px;cursor:pointer}
-.dw-chip[data-on="1"]{background:#1d2a3c;color:var(--dw-ink);box-shadow:inset 0 0 0 1px #2c3d52}
-.dw-chip b{font-weight:650;margin-left:4px;opacity:.75}
-.dw-select{background:var(--dw-panel);color:var(--dw-ink);border:1px solid var(--dw-line);border-radius:8px;padding:6px 9px;font:inherit;max-width:320px}
-.dw-refresh{background:var(--dw-panel);color:var(--dw-ink);border:1px solid var(--dw-line);border-radius:8px;padding:6px 11px;font:inherit;cursor:pointer}
-.dw-refresh:hover{border-color:var(--dw-accent)}
+.dw-chips{display:flex;gap:4px;background:var(--dsw-static-neutral-bluish-60,#f5f6f7);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:8px;padding:3px}
+.dw-chip{border:0;background:transparent;color:var(--dsw-alias-label-secondary,#61666b);font:inherit;padding:5px 11px;border-radius:6px;cursor:pointer}
+.dw-chip:hover{color:var(--dsw-alias-label-primary,#1b1f26)}
+.dw-chip[data-on="1"]{background:var(--dsw-static-neutral-bluish-00,#ffffff);color:var(--dsw-alias-label-primary,#1b1f26);box-shadow:0 1px 2px #0000001f}
+.dw-chip b{font-weight:650;margin-left:4px;opacity:.7}
+.dw-select{background:var(--dsw-static-neutral-bluish-00,#ffffff);color:var(--dsw-alias-label-primary,#1b1f26);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:8px;padding:6px 9px;font:inherit;max-width:320px}
+.dw-refresh{background:var(--dsw-static-neutral-bluish-00,#ffffff);color:var(--dsw-alias-label-primary,#1b1f26);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:8px;padding:6px 11px;font:inherit;cursor:pointer}
+.dw-refresh:hover{border-color:var(--dsw-static-deepseek-400,#7aaaff);color:var(--dsw-static-deepseek-600,#4868b2)}
 .dw-cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding:14px 18px 20px;overflow:auto;flex:1;min-height:0;align-items:start}
-.dw-col{background:var(--dw-panel);border:1px solid var(--dw-line);border-radius:12px;padding:12px;min-height:120px}
+.dw-col{background:var(--dsw-specific-tip,#f9fafb);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:12px;padding:12px;min-height:120px}
 .dw-col-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .dw-col-title{font-weight:650}
-.dw-col-count{font-size:12px;color:var(--dw-dim);background:#1b2431;border-radius:999px;padding:1px 8px}
-.dw-col-hint{margin:4px 0 10px;color:var(--dw-dim);font-size:11.5px}
+.dw-col-count{font-size:12px;color:var(--dsw-alias-label-tertiary,#81858c);background:var(--dsw-static-neutral-bluish-00,#ffffff);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:999px;padding:0 8px}
+.dw-col-hint{margin:4px 0 10px;color:var(--dsw-alias-label-tertiary,#81858c);font-size:11.5px}
 .dw-col-body{display:flex;flex-direction:column;gap:8px}
-.dw-card{background:#111822;border:1px solid #202c3b;border-radius:9px;padding:10px 11px}
-.dw-card[data-kind="request"]{border-left:3px solid #7aa7ff}
+.dw-card{background:var(--dsw-static-neutral-bluish-00,#ffffff);border:1px solid var(--dsw-alias-border-l2,#0000001a);border-radius:9px;padding:10px 11px;box-shadow:0 1px 2px #0000000a}
+.dw-card[data-kind="request"]{border-left:3px solid var(--dsw-static-blue-450,#4d93f8)}
 .dw-card-title{font-weight:600;margin-bottom:4px;word-break:break-word}
-.dw-card-meta{color:var(--dw-dim);font-size:11.5px}
-.dw-card-note{color:#9fb0c6;font-size:11.5px;margin-top:3px}
-.dw-card-foot{display:flex;justify-content:space-between;gap:8px;margin-top:7px;color:#63748a;font-size:10.5px}
+.dw-card-meta{color:var(--dsw-alias-label-tertiary,#81858c);font-size:11.5px}
+.dw-card-note{color:var(--dsw-alias-label-secondary,#61666b);font-size:11.5px;margin-top:3px}
+.dw-card-foot{display:flex;justify-content:space-between;gap:8px;margin-top:7px;color:var(--dsw-alias-label-tertiary,#81858c);font-size:10.5px}
 .dw-card-foot code{font-size:10.5px}
-.dw-empty{color:#5d6c80;font-size:12px;text-align:center;padding:16px 0}
-.dw-state{color:var(--dw-dim);font-size:12.5px;padding:28px 20px;line-height:1.7}
-.dw-state b{color:var(--dw-ink)}
-.dw-warn{color:#f0b37e}
+.dw-empty{color:var(--dsw-alias-label-tertiary,#81858c);font-size:12px;text-align:center;padding:16px 0}
+.dw-state{color:var(--dsw-alias-label-secondary,#61666b);font-size:12.5px;padding:28px 20px;line-height:1.7}
+.dw-state b{color:var(--dsw-alias-label-primary,#1b1f26)}
+.dw-warn{color:var(--dsw-alias-state-error-primary,#ec1313)}
 `;
 
     function useWorkspaceStore(store) {

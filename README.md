@@ -146,9 +146,9 @@ zstd -dc ~/.dsh/sessions/*/*/session.v4.jsonl.zstd | grep -c '研发闭环·运�
 记录是 append-only JSONL，对机器友好、对人极不友好。0.2.0 起插件带一个 Web 看板：
 左侧边栏点「研发看板」，就看到当前工作区的记录。
 
-![研发看板：需求 / 待办 / 等确认 / 已完成，可切换进行中 / 已完成 / 全部](https://raw.githubusercontent.com/yuna78/dsh-plugin-dev-workflow/main/docs/preview-board.png)
+![研发看板：需求 / 待办 / 待确认 / 已完成，可切换进行中 / 已完成 / 全部](https://raw.githubusercontent.com/yuna78/dsh-plugin-dev-workflow/main/docs/preview-board.png)
 
-- **四列**：需求（用户原话 + 验收）、待办（已建任务）、等确认（`waiting-user`）、已完成。
+- **四列**：需求（用户原话 + 验收）、待办（已建任务）、待确认（`waiting-user`）、已完成。
 - **三个过滤**：进行中 / 已完成 / 全部，计数与列表同源，不会各算各的。
 - **工作区下拉**：看板是全局面板，按 `<工作区>/.dsh-dev/` 读取，切换即换项目。
 - **只读**：看板只调一个 GET 路由 `/api/dsh-dev-assistant.board?root=…`；host 侧校验

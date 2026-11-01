@@ -87,7 +87,7 @@ const header = `
 const html = `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>研发看板预览</title>
 <style>
-html,body{margin:0;height:100%;background:#0f1319}
+html,body{margin:0;height:100%;background:#ffffff}
 body{padding:0}
 .dw-board{height:auto;min-height:${HEIGHT}px}
 </style>
