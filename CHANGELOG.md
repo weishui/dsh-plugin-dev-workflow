@@ -2,7 +2,13 @@
 
 本项目的所有重要变更都记录在这里。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [0.2.1] · 2026-11-01
+
+### 发布
+
+- **npm 首次跟上的版本**：npm 线上 latest 从 `0.1.0` 直达 `0.2.1`。`0.2.0` 当时只发了
+  GitHub Release，`npm publish` 因 2FA OTP 未完成（见 `docs/log/2026-11-01.md`）；
+  本次 0.2.1 把看板与新口径一起带上 npm，semver 允许跳过未发布的 0.2.0。
 
 ### 文档
 
