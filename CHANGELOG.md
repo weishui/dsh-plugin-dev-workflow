@@ -2,6 +2,31 @@
 
 本项目的所有重要变更都记录在这里。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] · 2026-11-01
+
+### 新增
+
+- **研发看板（Web）**：左侧边栏「研发看板」打开一个 main 面板，把 `.dsh-dev/` 的记录排成
+  四列——需求 / 待办 / 等确认 / 已完成，并可按 **进行中 / 已完成 / 全部** 过滤；计数与列表
+  同源。工作区下拉可切换项目。
+- **只读 host 路由** `GET /api/dsh-dev-assistant.board?root=<绝对路径>`：校验 `root` 是真实
+  目录后，只读取 `<root>/.dsh-dev/` 下的 requests / tasks / feedback / verifications /
+  completions；非绝对路径、不存在、指向文件一律 400；响应 `cache-control: no-store`。
+- **状态推导**：任务「已完成」= 自身 `succeeded/cancelled`，或在 `completions.jsonl` 里有收口
+  记录（`dev_complete` 从不回写 tasks.jsonl）。
+- **离线预览 harness**：`npm run preview` 用 `readBoard()` 的真实数据 + client 的同一套
+  `collect()` / `columnNode()` / CSS 渲染，再用本机 Chrome 截图到 `docs/preview-board.png`。
+
+### 打包
+
+- `package.json` 增加 `dsh.client`（platform web）与 `exports["./client"]`，`client.js` 进 files。
+
+### 验证
+
+- `node verify/smoke.mjs`：新增看板用例（readBoard 计数与 closed 推导、路由 200 / 400×3、
+  client 经 module-loader 包装加载、三种过滤的列数与计数一致性、空态、卡片节点类型）。
+- `node verify/preview.mjs`：真实记录渲染出图（2 需求 / 5 任务）。
+
 ## [0.1.1] · 2026-11-01
 
 ### 修复

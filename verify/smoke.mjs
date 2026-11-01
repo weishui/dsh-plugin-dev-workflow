@@ -3,16 +3,19 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
-import { defineDevTools, installReminder, renderReminder } from '../index.js';
+import { defineDevTools, installReminder, renderReminder, readBoard, registerBoardRoute, BOARD_ROUTE } from '../index.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
-const required = ['index.js', 'cordis.patch.yml', 'README.md', 'CHANGELOG.md', 'LICENSE', 'assets/icon.svg'];
+const required = ['index.js', 'client.js', 'cordis.patch.yml', 'README.md', 'CHANGELOG.md', 'LICENSE', 'assets/icon.svg'];
 for (const file of required) {
   if (!existsSync(join(root, file))) throw new Error(`missing required file: ${file}`);
 }
 if (pkg.name !== 'dsh-plugin-dev-workflow') throw new Error(`unexpected package name: ${pkg.name}`);
 if (pkg.dsh?.bundle?.patch !== './cordis.patch.yml') throw new Error('invalid dsh.bundle.patch');
+if (pkg.dsh?.client?.platform !== 'web') throw new Error('client half must declare platform web');
+if (pkg.exports?.['./client'] !== './client.js') throw new Error('client half must be exported as ./client');
+if (!pkg.files?.includes('client.js')) throw new Error('client.js must ship in the package');
 if (pkg.icon !== 'assets/icon.svg') throw new Error('icon must be declared');
 if (!pkg.files?.includes('assets/icon.svg')) throw new Error('icon must be included in files');
 if (!pkg.files?.includes('CHANGELOG.md')) throw new Error('CHANGELOG.md must ship in the package');
@@ -23,6 +26,8 @@ if (!readme.includes(pkg.version)) throw new Error(`README.md does not mention v
 if (!changelog.includes(`## [${pkg.version}]`)) throw new Error(`CHANGELOG.md has no section for ${pkg.version}`);
 const check = spawnSync(process.execPath, ['--check', join(root, 'index.js')], { stdio: 'inherit' });
 if (check.status !== 0) process.exit(check.status ?? 1);
+const clientCheck = spawnSync(process.execPath, ['--check', join(root, 'client.js')], { stdio: 'inherit' });
+if (clientCheck.status !== 0) process.exit(clientCheck.status ?? 1);
 
 // --- preset composition: the web shell disables host-plane tool rows, so a
 // preset that cannot run commands can never satisfy dev_verify's contract.
@@ -120,6 +125,91 @@ try {
 
   if (!renderReminder({ requests: 0, tasks: 0, feedback: 0, verifications: 0, completions: 0 }).includes('任务数为 0 时不要先写代码')) {
     throw new Error('reminder must warn when no task exists');
+  }
+
+  // --- board: reads the same records, never rewrites them -------------------
+  const openTask = await tools.get('dev_task_plan').execute(
+    { requestId: request.id, title: '看板空态文案', acceptance: ['无记录时给出解释'] },
+    exec,
+  );
+  const board = readBoard(dir, {});
+  if (board.requests.length !== 1) throw new Error(`board requests = ${board.requests.length}, expected 1`);
+  if (board.tasks.length !== 2) throw new Error(`board tasks = ${board.tasks.length}, expected 2`);
+  const closed = board.tasks.find((task) => task.id === task.id && task.closed);
+  if (!closed) throw new Error('completed task must be marked closed');
+  const stillOpen = board.tasks.find((task) => task.id === openTask.id);
+  if (stillOpen.closed) throw new Error('queued task must stay open');
+  if (stillOpen.completionStatus !== null) throw new Error('open task must not claim a completion');
+  if (board.counts.openTasks !== 1 || board.counts.closedTasks !== 1) {
+    throw new Error(`board task counts wrong: ${JSON.stringify(board.counts)}`);
+  }
+  // Latest-wins: appending a newer record for the same task must not duplicate it.
+  const before = readBoard(dir, {}).tasks.length;
+  await tools.get('dev_task_plan').execute({ requestId: request.id, title: '看板空态文案', acceptance: ['无记录时给出解释'] }, exec);
+  if (readBoard(dir, {}).tasks.length !== before + 1) throw new Error('each planned task must be its own record');
+
+  // --- board route: validates the browser-supplied root before reading ------
+  let route = null;
+  const mounting = { connection: { fetch: { register(spec) { route = spec; return () => { route = null; }; } } } };
+  registerBoardRoute(mounting, {});
+  if (!route) throw new Error('board route was not registered on the connection service');
+  if (route.path !== BOARD_ROUTE) throw new Error(`unexpected route path: ${route.path}`);
+  if (route.requestBody !== 'buffered') throw new Error('route must declare buffered body handling');
+
+  const call = (url) => route.fetch(new Request(url));
+  const ok = await call(`http://127.0.0.1:1${BOARD_ROUTE}?root=${encodeURIComponent(dir)}`);
+  if (ok.status !== 200) throw new Error(`route status ${ok.status} for a real project dir`);
+  const okBody = await ok.json();
+  if (okBody.tasks.length !== readBoard(dir, {}).tasks.length) throw new Error('route payload disagrees with readBoard');
+  if (!ok.headers.get('cache-control')?.includes('no-store')) throw new Error('route must not be cached');
+
+  const relative = await call(`http://127.0.0.1:1${BOARD_ROUTE}?root=relative/path`);
+  if (relative.status !== 400) throw new Error('relative root must be rejected');
+  const missing = await call(`http://127.0.0.1:1${BOARD_ROUTE}?root=${encodeURIComponent(join(dir, 'nope'))}`);
+  if (missing.status !== 400) throw new Error('missing root must be rejected');
+  const file = await call(`http://127.0.0.1:1${BOARD_ROUTE}?root=${encodeURIComponent(join(dir, 'package.json'))}`);
+  if (file.status !== 400) throw new Error('a file path must be rejected as a root');
+
+  // --- client half: same view model, loaded through the real module wrapper --
+  let registered = null;
+  const win = { localStorage: { getItem: () => null, setItem: () => {} }, __ModuleLoader__: { load(definition) { registered = definition; } } };
+  const fakeReact = {
+    createElement: (type, props, ...children) => ({ type, props: { ...(props ?? {}), children } }),
+    useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+    useEffect: () => {},
+    useMemo: (factory) => factory(),
+    useRef: (value) => ({ current: value }),
+  };
+  new Function('window', 'require', readFileSync(join(root, 'client.js'), 'utf8'))(win, (name) => {
+    if (name !== 'react') throw new Error(`client asked for an unexpected module: ${name}`);
+    return fakeReact;
+  });
+  if (!registered) throw new Error('client.js never registered with the module loader');
+  if (registered.id !== 'dsh-plugin-dev-workflow') throw new Error(`client module id = ${registered.id}`);
+  const clientExports = registered.factory((name) => fakeReact);
+  const view = clientExports.__board;
+  if (typeof view?.collect !== 'function') throw new Error('client is missing its view model');
+  if (!clientExports.inject?.includes('slots')) throw new Error('client must inject slots');
+
+  const payload = await (await call(`http://127.0.0.1:1${BOARD_ROUTE}?root=${encodeURIComponent(dir)}`)).json();
+  const openView = view.collect(payload, 'open');
+  const closedView = view.collect(payload, 'closed');
+  const allView = view.collect(payload, 'all');
+  if (openView.columns.length !== 3) throw new Error(`open filter must show 3 columns, got ${openView.columns.length}`);
+  if (closedView.columns.length !== 1) throw new Error('closed filter must show only closed');
+  if (allView.columns.length !== 4) throw new Error('all filter must show every column');
+  if (openView.counts.open + openView.counts.closed !== openView.counts.all) throw new Error('filter counts must add up');
+  if (allView.counts.all !== payload.requests.length + payload.tasks.length) {
+    throw new Error(`all count ${allView.counts.all} != records ${payload.requests.length + payload.tasks.length}`);
+  }
+  const emptyView = view.collect({ requests: [], tasks: [] }, 'all');
+  if (emptyView.counts.all !== 0) throw new Error('empty payload must count zero');
+  const columnNode = view.columnNode({ id: 'closed', title: '已完成', hint: 'h', items: [{ kind: 'task', id: 'task_1', title: 't', meta: 'm', note: '', time: '' }] });
+  const body = columnNode.props.children[2];
+  const cards = body.props.children.flat();
+  if (cards[0]?.type !== 'article' || cards[0].props?.className !== 'dw-card') throw new Error('column must render its cards');
+  if (view.columnNode({ id: 'queued', title: '待办', hint: 'h', items: [] }).props.children[2].props.children.flat().length === 0) {
+    throw new Error('empty column must still render its placeholder');
   }
 } finally {
   rmSync(dir, { recursive: true, force: true });

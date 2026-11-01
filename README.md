@@ -141,17 +141,34 @@ persona 只是上下文开头的一段话。回合一长，工具结果会把它
 zstd -dc ~/.dsh/sessions/*/*/session.v4.jsonl.zstd | grep -c '研发闭环·运行期提醒'
 ```
 
+## 看板：不用再读 JSON
+
+记录是 append-only JSONL，对机器友好、对人极不友好。0.2.0 起插件带一个 Web 看板：
+左侧边栏点「研发看板」，就看到当前工作区的记录。
+
+![研发看板：需求 / 待办 / 等确认 / 已完成，可切换进行中 / 已完成 / 全部](https://raw.githubusercontent.com/yuna78/dsh-plugin-dev-workflow/main/docs/preview-board.png)
+
+- **四列**：需求（用户原话 + 验收）、待办（已建任务）、等确认（`waiting-user`）、已完成。
+- **三个过滤**：进行中 / 已完成 / 全部，计数与列表同源，不会各算各的。
+- **工作区下拉**：看板是全局面板，按 `<工作区>/.dsh-dev/` 读取，切换即换项目。
+- **只读**：看板只调一个 GET 路由 `/api/dsh-dev-assistant.board?root=…`；host 侧校验
+  `root` 必须是真实目录，并且只打开该目录 `.dsh-dev/` 里那几个已知 JSONL 文件。
+  看板不写任何记录；接口失败只显示在页内，不影响会话与 `dev_*` 工具。
+- **状态怎么来的**：任务「已完成」= 自身状态 `succeeded/cancelled`，或 `completions.jsonl`
+  里有它的收口记录——`dev_complete` 只写 completions，从不改 tasks。
+
 ## 兼容性
 
 - DSH：`>=0.2.1-rc.2 <0.3.0`
 - Node.js：`>=22.19.0`
-- 当前版本：`0.1.1`
+- 当前版本：`0.2.0`
 
 ## 开发
 
 ```bash
-node verify/smoke.mjs
-node --check index.js
+node verify/smoke.mjs          # 门禁：工具 + 提醒 + 看板 host/client
+node verify/preview.mjs        # 可选：用真实记录离线渲染 docs/preview-board.png
+node --check index.js client.js
 npm pack --dry-run
 ```
 

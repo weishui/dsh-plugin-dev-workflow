@@ -1,5 +1,5 @@
-import { mkdirSync, appendFileSync, readFileSync, existsSync } from 'node:fs';
-import { join, resolve, basename } from 'node:path';
+import { mkdirSync, appendFileSync, readFileSync, existsSync, statSync } from 'node:fs';
+import { join, resolve, basename, isAbsolute } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 
 export const name = 'dev-assistant';
@@ -112,6 +112,113 @@ export function installReminder(ctx, config = {}) {
   return typeof dispose === 'function' ? dispose : () => {};
 }
 
+/**
+ * Read one project's records into the shape the board renders.
+ *
+ * Read-only and additive: nothing here writes, rewrites, or "repairs" a record.
+ * A task is closed when its own latest status says so or when a completion
+ * exists for it — that is the only place the two files are joined, because
+ * `dev_complete` writes to completions.jsonl and never mutates tasks.jsonl.
+ */
+export function readBoard(root, config = {}) {
+  const absolute = resolve(root);
+  const dir = resolve(config.dataRoot || join(absolute, '.dsh-dev'));
+  const completions = lines(join(dir, 'completions.jsonl'));
+  const completionByTask = new Map();
+  for (const completion of completions) {
+    if (typeof completion?.taskId === 'string') completionByTask.set(completion.taskId, completion);
+  }
+  const requests = latest(lines(join(dir, 'requests.jsonl')), 'requestId').map((record) => ({
+    id: record.requestId,
+    rawQuote: record.rawQuote ?? '',
+    normalized: record.normalized ?? '',
+    acceptance: record.acceptance ?? [],
+    scope: record.scope ?? '',
+    priority: record.priority ?? 'normal',
+    status: record.status ?? 'captured',
+    createdAt: record.createdAt ?? null,
+  }));
+  const tasks = latest(lines(join(dir, 'tasks.jsonl')), 'taskId').map((record) => {
+    const completion = completionByTask.get(record.taskId);
+    const status = record.status ?? 'queued';
+    return {
+      id: record.taskId,
+      requestId: record.requestId ?? null,
+      title: record.title ?? '',
+      kind: record.kind ?? '',
+      acceptance: record.acceptance ?? [],
+      steps: record.steps ?? [],
+      dependsOn: record.dependsOn ?? [],
+      risk: record.risk ?? '',
+      status,
+      closed: status === 'succeeded' || status === 'cancelled' || completion !== undefined,
+      completionStatus: completion?.status ?? null,
+      createdAt: record.createdAt ?? null,
+    };
+  });
+  return {
+    schemaVersion: 1,
+    projectId: `project_${createHash('sha256').update(absolute).digest('hex').slice(0, 10)}`,
+    root: absolute,
+    counts: {
+      requests: requests.length,
+      tasks: tasks.length,
+      feedback: lines(join(dir, 'feedback.jsonl')).length,
+      verifications: lines(join(dir, 'verifications.jsonl')).length,
+      completions: completions.length,
+      openTasks: tasks.filter((task) => !task.closed).length,
+      closedTasks: tasks.filter((task) => task.closed).length,
+    },
+    requests,
+    tasks,
+    generatedAt: now(),
+  };
+}
+
+export const BOARD_ROUTE = '/api/dsh-dev-assistant.board';
+
+const boardResponse = (body, status) => new Response(JSON.stringify(body), {
+  status,
+  headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+});
+
+/**
+ * Serve the board over one read-only route. `root` arrives from the browser, so
+ * it is validated as a real directory before anything under it is read, and the
+ * only paths ever opened are the six known JSONL files inside `<root>/.dsh-dev/`.
+ */
+export function registerBoardRoute(ctx, config = {}) {
+  const mount = (scope) => {
+    const registry = scope?.connection?.fetch;
+    if (typeof registry?.register !== 'function') return () => {};
+    return registry.register({
+      path: BOARD_ROUTE,
+      methods: ['GET'],
+      requestBody: 'buffered',
+      fetch: async (request) => {
+        let root = '';
+        try { root = new URL(request.url).searchParams.get('root') || ''; } catch { root = ''; }
+        if (!root) root = config.projectRoot || process.cwd();
+        if (!isAbsolute(root)) return boardResponse({ error: 'root must be an absolute path' }, 400);
+        let stat;
+        try { stat = statSync(root); } catch { return boardResponse({ error: `root not found: ${root}` }, 400); }
+        if (!stat.isDirectory()) return boardResponse({ error: `root is not a directory: ${root}` }, 400);
+        try {
+          return boardResponse(readBoard(root, config), 200);
+        } catch (error) {
+          return boardResponse({ error: `board read failed: ${error?.message ?? 'unknown'}` }, 500);
+        }
+      },
+    });
+  };
+  // The host hands `connection` to `apply`'s context when the row composes it;
+  // when the service is not visible yet, wait for it instead of skipping the
+  // route silently (a missing route shows up as an empty board).
+  if (typeof ctx?.connection?.fetch?.register === 'function') return mount(ctx) ?? (() => {});
+  if (typeof ctx?.inject === 'function') { ctx.inject(['connection'], (scope) => mount(scope)); return () => {}; }
+  return () => {};
+}
+
 export function defineDevTools(ctx, config = {}) {
   const project = (exec) => storeFor(ctx, config, exec);
   return [
@@ -147,11 +254,17 @@ export function defineDevTools(ctx, config = {}) {
 
 export function apply(ctx, rawConfig = {}) {
   const config = rawConfig ?? {};
-  if (!config.tools) return;
-  const runtime = ctx.get('tools');
-  if (!runtime?.register) return;
-  const disposers = defineDevTools(ctx, config).map((tool) => runtime.register(tool));
-  // The reminder names the tools, so it is only meaningful when they exist.
-  if (config.reminder !== false) disposers.push(installReminder(ctx, config));
-  ctx.on?.('dispose', () => disposers.forEach((dispose) => dispose?.()));
+  const disposers = [];
+  if (config.tools) {
+    const runtime = ctx.get('tools');
+    if (runtime?.register) {
+      disposers.push(...defineDevTools(ctx, config).map((tool) => runtime.register(tool)));
+      // The reminder names the tools, so it is only meaningful when they exist.
+      if (config.reminder !== false) disposers.push(installReminder(ctx, config));
+    }
+  }
+  // The board is read-only and useful on its own, so it mounts independently of
+  // the tool row and of any preset that happens to be selected.
+  if (config.board !== false) disposers.push(registerBoardRoute(ctx, config));
+  if (disposers.length) ctx.on?.('dispose', () => disposers.forEach((dispose) => dispose?.()));
 }
