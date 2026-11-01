@@ -2,6 +2,16 @@
 
 本项目的所有重要变更都记录在这里。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.2.2] · 2026-11-01
+
+### 修复
+
+- **preset 加载失败（卡片显示 Failed to load）**：插件入口的 `inject` 少声明了
+  `connection`，而 `apply()` 挂载看板路由时要访问 `ctx.connection.fetch`。Cordis 对
+  未声明的服务访问会直接抛错（DSH `0.2.1-rc.2` 收紧了这条校验），插件激活整体失败，
+  preset 卡片随之标记为「Failed to load」。现在与内置路由插件的写法一致，在
+  `inject` 里显式声明 `connection`；`apply()` 里的 `ctx.inject` 兜底挂载保留。
+
 ## [0.2.1] · 2026-11-01
 
 ### 发布
