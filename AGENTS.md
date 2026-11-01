@@ -18,7 +18,7 @@ DSH 插件：把研发对话变成「Request → Feedback → Task → Verify �
 | `index.js` | host 侧插件入口：`defineDevTools`（dev_* 工具）、`installReminder` / `renderReminder`（每 5 步的运行期提醒）、JSONL 存储层 |
 | `client.js` | Web 看板客户端（`./client` 导出），只调一个 GET 路由，只读 |
 | `index.js` 中的 `registerBoardRoute` / `readBoard` | 看板 host 侧：校验 `root` 是真实目录，只读已知 JSONL，host 只截断分页（已完成 30 / 需求 40 / 待办 20） |
-| `cordis.patch.yml` | preset「研发助手 · Dev Assistant」的 patch：工具行 + persona + pre-step 提醒注入 |
+| `cordis.patch.yml` | 两层挂载：顶层 `insert` 宿主级挂载本包本体（`dev-workflow-host`，tools/reminder 关、只读看板路由开）；preset「研发助手 · Dev Assistant」（`dev-assistant-tools` 等，随会话挂载） |
 | `package.json` → `dsh.bundle` / `dsh.client` | 插件打包与 Web 客户端注入声明 |
 | `verify/smoke.mjs` | 唯一门禁（`npm test`）：文件齐全、契约字段、行为测试、双文件 `node --check` |
 | `verify/preview.mjs` | 用真实记录离线渲染 `docs/preview-board.png` |
@@ -36,6 +36,21 @@ npm pack --dry-run       # 发版前核对 tarball 内容与体积
 node verify/preview.mjs  # 可选：重新渲染看板截图
 ```
 
+## 调试（宿主侧）
+
+- **看板入口没出现的排查顺序**：① 取宿主 index HTML，看 `__DSH_BOOT__` 的 entries 里
+  有没有 `dsh-plugin-dev-workflow` 行——没有就是组合层排除（检查 `dev-workflow-host`
+  挂载），而不是加载失败；② 有行再看 client bundle 与 board 路由。插件列表「无报错」
+  不代表正常：组合跳过是静默的。
+- **起探针实例**：CLI 禁止操作桌面 App 的 profile（`profile "desktop" is managed
+  exclusively by the Electron application`）。用 `DSH_HOME=/tmp/dsh-home dsh
+  --from-default-profile web --profile probe --dump-config` 复制模板、`dsh plugin
+  --profile probe add <本仓库路径>` 装 link:、再 `DSH_HOME=/tmp/dsh-home dsh --profile
+  probe --port <空闲端口>` 起实例，启动输出里拿带 token 的 URL 验证页面与路由。
+  全程不碰用户正在跑的 App；用完杀进程。
+- **npm 缓存 EPERM**（`~/.npm/_cacache` root-owned）：加 `--cache /tmp/npm-cache-probe`
+  绕开，不要 sudo chown 用户的缓存。
+
 ## 硬性约定（smoke 会抓的）
 
 1. **`package.json` 的 `files` 白名单**：新增要随包发布的文件必须加进去，否则 tarball 缺文件。
@@ -43,10 +58,17 @@ node verify/preview.mjs  # 可选：重新渲染看板截图
 2. **版本三件套必须同步**：改版本号时，`package.json.version`、`CHANGELOG.md` 的 `## [x.y.z]` 小节、
    README 中的版本号（兼容性一节）三处一致，smoke 逐项校验。
 3. **client 契约**：`dsh.client.platform` 必须是 `web`，`./client` 必须导出 `client.js`，二者缺一不可。
-4. **preset patch 必须保留这些行**：`dsh-tool-bash`、`dsh-tool-pwsh`、`dsh-tool-fs`、
-   `dsh-agent-inject` 相关行与 `id: dev-assistant`——Web shell 禁用了 host 工具行，
-   preset 不能执行命令就永远满足不了 `dev_verify` 的契约。
+4. **preset patch 必须保留这些行**（smoke 逐行断言）：`dsh-plugin-dev-workflow`、
+   `dsh-tool-bash`、`dsh-tool-pwsh`、`dsh-tool-fs`、`dsh-agent-instructions` 与
+   `id: dev-assistant`——Web shell 禁用了 host 工具行，preset 不能执行命令就永远
+   满足不了 `dev_verify` 的契约。
 5. **icon 契约**：`pkg.icon === 'assets/icon.svg'` 且 `assets/icon.svg` 在 `files` 里。
+6. **宿主顶层挂载不可删**：`cordis.patch.yml` 顶层 `insert` 里的 `dev-workflow-host`
+   （`name: 'dsh-plugin-dev-workflow'`）是看板 UI 进页面模块图的唯一通道。client 模块
+   组合只认宿主树里「包名 + 活 fiber」的 loader 条目；本包只随 preset 挂载时宿主层
+   没有 fiber，组合**静默跳过**——无报错、插件列表无异常、重启无效（0.2.3 之前正是
+   这个坑，见 `docs/log/2026-11-01-0.2.3.md`）。smoke 目前只断言行存在，不校验挂载
+   层级；删掉这一条不会红，但入口会消失。
 
 ## 行为约定（smoke 之外，但同样硬）
 
