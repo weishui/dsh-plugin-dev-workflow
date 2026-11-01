@@ -2,6 +2,23 @@
 
 本项目的所有重要变更都记录在这里。版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 文档
+
+- **README 换成市场口径**：不再从「研发闭环工具链」讲起，而是从「一个人 + 一个 AI 的轻量开发」
+  讲起——先把适用人群（plugin / 小工具 / 个人小应用 / 模糊 idea 快迭代）和**不适用**人群
+  （多人协作研发项目、合规审计、一句话自动生成产品）说清楚，再讲人设、看板、流程三件套，
+  以及「原话落盘、跨 session 不失真」这条主线；新增「一个想法的一生」示意、常见共鸣场景、
+  「它明确不做的事」对照表。
+- **首图重做**：`assets/workflow-infographic.svg` 从带渐变与阴影的五步信息图，改成编辑式排版
+  （hairline 分隔、暖白底、无阴影无蓝色强调条、单一陶土色点缀），只讲三件套与五步落点。
+- **`package.json` 元数据**：`description` 与 `keywords` 跟随新定位（dev workflow / lightweight /
+  preset / kanban），npm 搜索页与市场条目与 README 口径一致。
+- **新增 `docs/marketing/go-to-market.md`**：一句话定位候选、电梯稿、人群判断信号、卖点排序、
+  可复用体验故事、异议处理、渠道落地清单、不可承诺清单（含 `dev_complete` 并不产出 `blocked`
+  这一实现边界）。该目录不进发布包。
+
 ## [0.2.0] · 2026-11-01
 
 ### 新增
